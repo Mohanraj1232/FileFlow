@@ -3,7 +3,8 @@ node_modules/
 
 # Build
 dist/
-target/
+dist-electron/
+release/
 
 # IDE
 .vscode/
@@ -19,7 +20,3 @@ desktop.ini
 # Env
 .env
 .env.local
-
-# Tauri
-src-tauri/target/
-src-tauri/gen/

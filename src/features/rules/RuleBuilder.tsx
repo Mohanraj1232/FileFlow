@@ -295,9 +295,8 @@ export default function RuleBuilder() {
 
   async function handlePickFolder(actionId: number) {
     try {
-      const { open } = await import("@tauri-apps/plugin-dialog");
-      const selected = await open({ directory: true, multiple: false, title: "Select destination folder" });
-      if (selected) updateAction(actionId, { destination: selected as string });
+      const selected = await window.electronAPI.showOpenDialog();
+      if (selected) updateAction(actionId, { destination: selected });
     } catch {
       // dialog cancelled
     }

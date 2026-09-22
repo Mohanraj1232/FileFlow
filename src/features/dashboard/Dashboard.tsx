@@ -83,10 +83,9 @@ export default function Dashboard() {
 
   async function handleAddFolder() {
     try {
-      const { open } = await import("@tauri-apps/plugin-dialog");
-      const selected = await open({ directory: true, multiple: false, title: "Select folder to watch" });
+      const selected = await window.electronAPI.showOpenDialog();
       if (selected) {
-        await addWatchedFolder(selected as string, false);
+        await addWatchedFolder(selected, false);
         loadData();
       }
     } catch {
