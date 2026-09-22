@@ -144,8 +144,8 @@ pub fn create_watcher(
             match result {
                 Ok(events) => {
                     for event in events {
-                        for path in event.paths {
-                            if path.is_file() && !should_ignore_file(&path) {
+                        for path in &event.paths {
+                            if path.is_file() && !should_ignore_file(path) {
                                 tx.send(FileEvent {
                                     path: path.clone(),
                                 })
@@ -178,18 +178,13 @@ pub fn watch_folder(
         RecursiveMode::NonRecursive
     };
     debouncer
-        .watcher()
         .watch(path, mode)
         .map_err(|e| format!("Failed to watch {}: {}", path.display(), e))?;
-    debouncer
-        .cache()
-        .add_root(path, mode);
     Ok(())
 }
 
 pub fn unwatch_folder(debouncer: &mut WatcherHandle, path: &Path) -> Result<(), String> {
     debouncer
-        .watcher()
         .unwatch(path)
         .map_err(|e| format!("Failed to unwatch {}: {}", path.display(), e))?;
     Ok(())

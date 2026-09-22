@@ -47,7 +47,7 @@ pub fn extension_to_kind(ext: &str) -> FileKind {
         "zip" | "rar" | "7z" | "tar" | "gz" | "bz2" | "xz" | "zst" | "lz" | "cab" | "iso"
         | "dmg" => FileKind::Archive,
 
-        "rs" | "js" | "ts" | "jsx" | "tsx" | "py" | "java" | "c" | "cpp" | "h" | "hpp" | "cs"
+        "rs" | "js" | "jsx" | "tsx" | "py" | "java" | "c" | "cpp" | "h" | "hpp" | "cs"
         | "go" | "rb" | "php" | "swift" | "kt" | "scala" | "lua" | "r" | "m" | "sh" | "bash"
         | "ps1" | "bat" | "cmd" | "sql" | "html" | "css" | "scss" | "sass" | "less" | "json"
         | "xml" | "yaml" | "yml" | "toml" | "ini" | "cfg" | "conf" | "md" | "markdown"

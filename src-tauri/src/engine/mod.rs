@@ -107,7 +107,7 @@ fn evaluate_name(op: &ConditionOp, value: &serde_json::Value, name: &str, case_s
     };
 
     let (cmp_name, cmp_val) = if case_sensitive {
-        (name.to_string(), val_str)
+        (name.to_string(), val_str.clone())
     } else {
         (name.to_lowercase(), val_str.to_lowercase())
     };
