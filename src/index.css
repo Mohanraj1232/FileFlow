@@ -57,29 +57,6 @@
   --elev-pop: 0 8px 24px rgb(1 4 9 / 0.75);
 }
 
-/* Legacy aliases for screens not yet migrated to the Tailwind tokens. */
-:root {
-  --bg-primary: var(--surface);
-  --bg-secondary: var(--inset);
-  --bg-tertiary: var(--hover);
-  --bg-sidebar: var(--surface);
-  --bg-sidebar-hover: var(--hover);
-  --bg-sidebar-active: var(--accent-soft);
-  --text-primary: var(--fg);
-  --text-secondary: var(--fg-muted);
-  --text-muted: var(--fg-subtle);
-  --text-sidebar: var(--fg);
-  --text-sidebar-muted: var(--fg-muted);
-  --border-color: var(--border);
-  --border-strong: var(--border);
-  --accent-light: var(--accent-soft);
-  --success-light: var(--success-soft);
-  --warning-light: var(--warning-soft);
-  --danger-light: var(--danger-soft);
-  --shadow-sm: var(--elev-card);
-  --shadow-md: var(--elev-pop);
-}
-
 @theme inline {
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);
