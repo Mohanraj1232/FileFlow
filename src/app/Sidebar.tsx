@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { startWatching, stopWatching, getWatchingStatus } from "../lib/commands";
+import { useToast } from "../components/Toast";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -25,6 +26,7 @@ const navItems = [
 export default function Sidebar() {
   const [watching, setWatching] = useState(false);
   const [toggling, setToggling] = useState(false);
+  const { addToast } = useToast();
 
   useEffect(() => {
     getWatchingStatus()
@@ -44,8 +46,11 @@ export default function Sidebar() {
         await startWatching();
         setWatching(true);
       }
-    } catch {
-      // silently ignore — backend may not be ready yet
+    } catch (e) {
+      addToast({
+        type: "error",
+        text: `Failed to ${watching ? "pause" : "start"} watching: ${String(e)}`,
+      });
     } finally {
       setToggling(false);
     }

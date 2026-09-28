@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
-import { Save, Plus, X, Loader2, Sun, Moon, Monitor } from "lucide-react";
+import { Save, Plus, X, Sun, Moon, Monitor } from "lucide-react";
 import type { AppSettings, ConflictPolicy } from "../../lib/types";
 import { getSettings, updateSetting } from "../../lib/commands";
 import { applyTheme as applyThemeToDocument } from "../../lib/theme";
+import { useToast } from "../../components/Toast";
+import Button from "../../components/Button";
 
 export default function Settings() {
   const [settings, setSettings] = useState<AppSettings>({
@@ -16,14 +18,15 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [newPattern, setNewPattern] = useState("");
+  const { addToast } = useToast();
 
   useEffect(() => {
     (async () => {
       try {
         const s = await getSettings();
         setSettings(s);
-      } catch {
-        // use defaults
+      } catch (e) {
+        addToast({ type: "error", text: `Failed to load settings: ${String(e)}` });
       } finally {
         setLoading(false);
       }
@@ -69,8 +72,8 @@ export default function Settings() {
       );
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
-    } catch {
-      // ignore
+    } catch (e) {
+      addToast({ type: "error", text: `Failed to save settings: ${String(e)}` });
     } finally {
       setSaving(false);
     }
@@ -336,25 +339,14 @@ export default function Settings() {
 
       {/* Save */}
       <div className="flex items-center gap-3 pb-8">
-        <button
+        <Button
+          variant="primary"
           onClick={handleSave}
-          disabled={saving}
-          className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-50"
-          style={{ backgroundColor: "var(--accent)" }}
-          onMouseEnter={(e) =>
-            (e.currentTarget.style.backgroundColor = "var(--accent-hover)")
-          }
-          onMouseLeave={(e) =>
-            (e.currentTarget.style.backgroundColor = "var(--accent)")
-          }
+          loading={saving}
+          icon={<Save size={16} />}
         >
-          {saving ? (
-            <Loader2 size={16} className="animate-spin" />
-          ) : (
-            <Save size={16} />
-          )}
           {saving ? "Saving..." : "Save Settings"}
-        </button>
+        </Button>
         {saved && (
           <span className="text-sm" style={{ color: "var(--success)" }}>
             Settings saved!
