@@ -81,20 +81,21 @@ export default function Unsorted() {
         title="Unsorted Files"
         description="Files that don't match any rule"
         actions={
-          <Select
-            value={selectedFolder}
-            onChange={(e) =>
-              setSelectedFolder(e.target.value ? Number(e.target.value) : "")
-            }
-            className="w-64"
-          >
-            <option value="">Select a folder...</option>
-            {folders.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.path}
-              </option>
-            ))}
-          </Select>
+          <div className="w-64 shrink-0">
+            <Select
+              value={selectedFolder}
+              onChange={(e) =>
+                setSelectedFolder(e.target.value ? Number(e.target.value) : "")
+              }
+            >
+              <option value="">Select a folder...</option>
+              {folders.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.path}
+                </option>
+              ))}
+            </Select>
+          </div>
         }
       />
 

@@ -147,59 +147,62 @@ export default function Settings() {
           <CardHeader title="File Handling" />
           <CardBody className="space-y-4">
             <SettingRow label="Default conflict policy">
-              <Select
-                value={settings.conflict_default}
-                onChange={(e) =>
-                  setSettings((s) => ({
-                    ...s,
-                    conflict_default: e.target.value as ConflictPolicy,
-                  }))
-                }
-                className="w-64"
-              >
-                <option value="auto_rename">Auto-rename (e.g., file (2).pdf)</option>
-                <option value="skip">Skip</option>
-                <option value="replace_if_duplicate">
-                  Replace if duplicate (same hash)
-                </option>
-              </Select>
+              <div className="w-64">
+                <Select
+                  value={settings.conflict_default}
+                  onChange={(e) =>
+                    setSettings((s) => ({
+                      ...s,
+                      conflict_default: e.target.value as ConflictPolicy,
+                    }))
+                  }
+                >
+                  <option value="auto_rename">Auto-rename (e.g., file (2).pdf)</option>
+                  <option value="skip">Skip</option>
+                  <option value="replace_if_duplicate">
+                    Replace if duplicate (same hash)
+                  </option>
+                </Select>
+              </div>
             </SettingRow>
 
             <SettingRow label="Notification level">
-              <Select
-                value={settings.notification_level}
-                onChange={(e) =>
-                  setSettings((s) => ({
-                    ...s,
-                    notification_level: e.target.value as AppSettings["notification_level"],
-                  }))
-                }
-                className="w-64"
-              >
-                <option value="all">All (one per file)</option>
-                <option value="batched">Batched (summary every few files)</option>
-                <option value="errors_only">Errors only</option>
-                <option value="none">None</option>
-              </Select>
+              <div className="w-64">
+                <Select
+                  value={settings.notification_level}
+                  onChange={(e) =>
+                    setSettings((s) => ({
+                      ...s,
+                      notification_level: e.target.value as AppSettings["notification_level"],
+                    }))
+                  }
+                >
+                  <option value="all">All (one per file)</option>
+                  <option value="batched">Batched (summary every few files)</option>
+                  <option value="errors_only">Errors only</option>
+                  <option value="none">None</option>
+                </Select>
+              </div>
             </SettingRow>
 
             <SettingRow
               label="Scan schedule"
               description="How often watched folders are rescanned, in minutes"
             >
-              <Input
-                type="number"
-                min={5}
-                max={1440}
-                value={settings.scan_schedule_minutes}
-                onChange={(e) =>
-                  setSettings((s) => ({
-                    ...s,
-                    scan_schedule_minutes: Number(e.target.value) || 60,
-                  }))
-                }
-                className="w-24"
-              />
+              <div className="w-24">
+                <Input
+                  type="number"
+                  min={5}
+                  max={1440}
+                  value={settings.scan_schedule_minutes}
+                  onChange={(e) =>
+                    setSettings((s) => ({
+                      ...s,
+                      scan_schedule_minutes: Number(e.target.value) || 60,
+                    }))
+                  }
+                />
+              </div>
             </SettingRow>
           </CardBody>
         </Card>

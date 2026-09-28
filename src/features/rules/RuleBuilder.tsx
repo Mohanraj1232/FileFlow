@@ -414,35 +414,45 @@ export default function RuleBuilder() {
                       </div>
                     )}
                     <div className="flex items-center gap-2">
-                      <Select
-                        value={cond.field}
-                        onChange={(e) =>
-                          updateCondition(cond.id, { field: e.target.value })
-                        }
-                        className="w-auto min-w-[140px]"
-                      >
-                        {FIELD_OPTIONS.map((f) => (
-                          <option key={f.value} value={f.value}>
-                            {f.label}
-                          </option>
-                        ))}
-                      </Select>
+                      {/* Fixed-width wrapper, not w-auto on the Select itself:
+                          Select/Input share a base class that includes w-full,
+                          and because of how Tailwind orders conflicting width
+                          utilities in its generated stylesheet, a w-auto passed
+                          alongside it does not reliably win — width:100% keeps
+                          winning regardless of className order. A wrapper with
+                          its own fixed width sidesteps the conflict entirely
+                          (the Select just fills that wrapper's real width). */}
+                      <div className="w-[150px] shrink-0">
+                        <Select
+                          value={cond.field}
+                          onChange={(e) =>
+                            updateCondition(cond.id, { field: e.target.value })
+                          }
+                        >
+                          {FIELD_OPTIONS.map((f) => (
+                            <option key={f.value} value={f.value}>
+                              {f.label}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
 
-                      <Select
-                        value={cond.op}
-                        onChange={(e) =>
-                          updateCondition(cond.id, {
-                            op: e.target.value as ConditionOp,
-                          })
-                        }
-                        className="w-auto min-w-[130px]"
-                      >
-                        {ops.map((o) => (
-                          <option key={o.value} value={o.value}>
-                            {o.label}
-                          </option>
-                        ))}
-                      </Select>
+                      <div className="w-[140px] shrink-0">
+                        <Select
+                          value={cond.op}
+                          onChange={(e) =>
+                            updateCondition(cond.id, {
+                              op: e.target.value as ConditionOp,
+                            })
+                          }
+                        >
+                          {ops.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
 
                       {/* Wrapper claims the flex space; the control fills it with
                           plain w-full. Chromium's flex algorithm gives form
@@ -520,21 +530,22 @@ export default function RuleBuilder() {
             <div className="space-y-3">
               {actions.map((act) => (
                 <div key={act.id} className="flex items-start gap-2">
-                  <Select
-                    value={act.action_type}
-                    onChange={(e) =>
-                      updateAction(act.id, {
-                        action_type: e.target.value as ActionType,
-                      })
-                    }
-                    className="w-auto min-w-[120px]"
-                  >
-                    <option value="move">Move</option>
-                    <option value="copy">Copy</option>
-                    <option value="rename">Rename</option>
-                    <option value="trash">Trash</option>
-                    <option value="ignore">Ignore</option>
-                  </Select>
+                  <div className="w-[130px] shrink-0">
+                    <Select
+                      value={act.action_type}
+                      onChange={(e) =>
+                        updateAction(act.id, {
+                          action_type: e.target.value as ActionType,
+                        })
+                      }
+                    >
+                      <option value="move">Move</option>
+                      <option value="copy">Copy</option>
+                      <option value="rename">Rename</option>
+                      <option value="trash">Trash</option>
+                      <option value="ignore">Ignore</option>
+                    </Select>
+                  </div>
 
                   {(act.action_type === "move" || act.action_type === "copy") && (
                     <div className="flex flex-1 gap-2">
