@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Plus, X, FlaskConical, Save, ArrowLeft } from "lucide-react";
 import type {
   Rule,
@@ -82,14 +82,27 @@ function inputClass(): string {
 export default function RuleBuilder() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const isEditing = Boolean(id);
 
   const [name, setName] = useState("");
   const [trigger, setTrigger] = useState<TriggerType>("arrival");
   const [groupType, setGroupType] = useState<"all" | "any">("all");
-  const [conditions, setConditions] = useState<ConditionRow[]>([
-    { id: nextCondId++, field: "extension", op: "is", value: "" },
-  ]);
+  const [conditions, setConditions] = useState<ConditionRow[]>(() => {
+    // Prefilled from Unsorted's "Create Rule" link (?ext=...&kind=...),
+    // only when creating a new rule — an edit's useEffect below overwrites this.
+    if (!isEditing) {
+      const ext = searchParams.get("ext");
+      const kind = searchParams.get("kind");
+      if (ext) {
+        return [{ id: nextCondId++, field: "extension", op: "is", value: ext }];
+      }
+      if (kind) {
+        return [{ id: nextCondId++, field: "kind", op: "is", value: kind }];
+      }
+    }
+    return [{ id: nextCondId++, field: "extension", op: "is", value: "" }];
+  });
   const [actions, setActions] = useState<ActionRow[]>([
     {
       id: nextActionId++,

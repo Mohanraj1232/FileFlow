@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Save, Plus, X, Loader2, Sun, Moon, Monitor } from "lucide-react";
 import type { AppSettings, ConflictPolicy } from "../../lib/types";
 import { getSettings, updateSetting } from "../../lib/commands";
+import { applyTheme as applyThemeToDocument } from "../../lib/theme";
 
 export default function Settings() {
   const [settings, setSettings] = useState<AppSettings>({
@@ -31,18 +32,7 @@ export default function Settings() {
 
   function applyTheme(theme: "light" | "dark" | "system") {
     setSettings((s) => ({ ...s, theme }));
-    const root = document.documentElement;
-    if (theme === "dark") {
-      root.classList.add("dark");
-    } else if (theme === "light") {
-      root.classList.remove("dark");
-    } else {
-      if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-        root.classList.add("dark");
-      } else {
-        root.classList.remove("dark");
-      }
-    }
+    applyThemeToDocument(theme);
   }
 
   function addPattern() {

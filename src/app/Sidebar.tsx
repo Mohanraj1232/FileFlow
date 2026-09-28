@@ -10,8 +10,8 @@ import {
   Pause,
   FileStack,
 } from "lucide-react";
-import { useState } from "react";
-import { startWatching, stopWatching } from "../lib/commands";
+import { useState, useEffect } from "react";
+import { startWatching, stopWatching, getWatchingStatus } from "../lib/commands";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -25,6 +25,14 @@ const navItems = [
 export default function Sidebar() {
   const [watching, setWatching] = useState(false);
   const [toggling, setToggling] = useState(false);
+
+  useEffect(() => {
+    getWatchingStatus()
+      .then((status) => setWatching(status.watching))
+      .catch(() => {
+        // backend may not be ready yet — keep the default
+      });
+  }, []);
 
   async function handleToggleWatch() {
     setToggling(true);

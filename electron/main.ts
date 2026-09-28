@@ -1,4 +1,4 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, Menu } = require('electron');
 const path = require('node:path');
 const { initDb } = require('./core/db');
 const { recoverPending } = require('./core/executor');
@@ -24,6 +24,12 @@ let watcher: any = null;
 let recentlyWritten: any = null;
 
 function createWindow(): void {
+  // Ship without the default Electron dev menu (reload/toggle devtools/etc)
+  // in production; keep it in dev for debugging convenience.
+  if (app.isPackaged) {
+    Menu.setApplicationMenu(null);
+  }
+
   mainWindow = new BrowserWindow({
     width: 1100,
     height: 700,
