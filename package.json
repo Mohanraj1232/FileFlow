@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -p tsconfig.json && vite build",
     "build:electron": "tsc -p electron/tsconfig.json",
-    "electron:dev": "npm run build:electron && concurrently \"vite\" \"wait-on http://localhost:1420 && electron .\"",
+    "electron:dev": "npm run build:electron && concurrently \"vite\" \"wait-on http://localhost:1420 && cross-env VITE_DEV_SERVER_URL=http://localhost:1420 electron .\"",
     "electron:start": "npm run build && npm run build:electron && electron .",
     "electron:build": "npm run build && npm run build:electron && electron-builder",
     "preview": "vite preview"
@@ -32,6 +32,7 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.0.0",
+    "cross-env": "^10.1.0",
     "electron": "^33.0.0",
     "electron-builder": "^25.0.0",
     "tailwindcss": "^4.0.0",
