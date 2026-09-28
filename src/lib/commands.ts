@@ -132,3 +132,7 @@ export async function startWatching(): Promise<void> {
 export async function stopWatching(): Promise<void> {
   return window.electronAPI.stopWatching();
 }
+
+export async function getWatchingStatus(): Promise<{ watching: boolean }> {
+  return window.electronAPI.getWatchingStatus();
+}

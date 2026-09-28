@@ -176,9 +176,15 @@ async function undoOperation(db: any, operationId: number): Promise<UndoResult> 
     }
   }
 
-  // Mark the operation as undone if at least some steps were undone
+  // Reflect the outcome on the operation: fully undone only if every
+  // attempted step succeeded, otherwise partially undone so the UI can
+  // still offer a retry path for the remaining steps.
   if (result.steps_undone > 0) {
-    journal.markOperationUndone(db, operationId);
+    journal.setOperationUndoStatus(
+      db,
+      operationId,
+      result.steps_skipped === 0 ? 'undone' : 'partially_undone'
+    );
   }
 
   result.success = result.errors.length === 0;

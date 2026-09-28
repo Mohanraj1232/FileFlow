@@ -69,6 +69,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   stopWatching: () => ipcRenderer.invoke('stop_watching'),
 
+  getWatchingStatus: () => ipcRenderer.invoke('get_watching_status'),
+
   // Dialog
   showOpenDialog: () => ipcRenderer.invoke('show_open_dialog'),
 

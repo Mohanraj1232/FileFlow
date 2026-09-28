@@ -215,6 +215,10 @@ async function evaluate(
   rules: Rule[],
   trigger: string
 ): Promise<EvalResult | null> {
+  // Evaluation is always first-match-wins by priority: the first enabled
+  // rule whose condition matches is returned and evaluation stops there.
+  // Rule.stop_after is persisted for a possible future multi-rule chaining
+  // mode but is intentionally not consulted here today.
   // Filter enabled rules matching trigger type, sort by priority (lower number = higher priority)
   const candidateRules = rules
     .filter((r) => r.enabled === 1 && r.trigger_type === trigger)

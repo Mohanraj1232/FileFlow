@@ -135,12 +135,18 @@ function buildOperationSummary(db: any, operationId: number): string {
 }
 
 /**
- * Mark an entire operation as undone.
+ * Set an operation's status to reflect the outcome of an undo attempt.
+ * Use 'undone' when every done step was successfully reverted, or
+ * 'partially_undone' when some steps could not be reverted.
  */
-function markOperationUndone(db: any, operationId: number): void {
+function setOperationUndoStatus(
+  db: any,
+  operationId: number,
+  status: 'undone' | 'partially_undone'
+): void {
   db.prepare(
-    "UPDATE operations SET status = 'undone', finished_at = ? WHERE id = ?"
-  ).run(now(), operationId);
+    'UPDATE operations SET status = ?, finished_at = ? WHERE id = ?'
+  ).run(status, now(), operationId);
 }
 
 /**
@@ -220,7 +226,7 @@ module.exports = {
   markStepFailed,
   markStepUndone,
   finishOperation,
-  markOperationUndone,
+  setOperationUndoStatus,
   getOperations,
   getOperationSteps,
   getStepById,

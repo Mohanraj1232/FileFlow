@@ -97,7 +97,8 @@ export type OperationStatus =
   | "done"
   | "partial"
   | "failed"
-  | "undone";
+  | "undone"
+  | "partially_undone";
 export type StepStatus =
   | "pending"
   | "done"

@@ -258,7 +258,8 @@ export default function History() {
                           >
                             {formatTime(op.started_at)}
                           </span>
-                          {op.status === "done" && (
+                          {(op.status === "done" ||
+                            op.status === "partially_undone") && (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -276,7 +277,7 @@ export default function History() {
                               ) : (
                                 <Undo2 size={12} />
                               )}
-                              Undo
+                              {op.status === "partially_undone" ? "Retry" : "Undo"}
                             </button>
                           )}
                         </div>

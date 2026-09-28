@@ -16,6 +16,22 @@ const TEMP_EXTENSIONS = [
 const IGNORED_FILES = ['.DS_Store', 'desktop.ini', 'Thumbs.db'];
 
 /**
+ * Shared watching-enabled state. This is the single source of truth for
+ * whether the watcher should act on detected files — both the IPC handlers
+ * (start_watching/stop_watching) and the main process's file-detection
+ * callback read/write this.
+ */
+let watchingEnabled = false;
+
+function isWatchingEnabled(): boolean {
+  return watchingEnabled;
+}
+
+function setWatchingEnabled(enabled: boolean): void {
+  watchingEnabled = enabled;
+}
+
+/**
  * Check if a file should be ignored by the watcher.
  */
 function shouldIgnoreFile(filePath: string): boolean {
@@ -139,7 +155,7 @@ class RecentlyWritten {
  * @returns The chokidar watcher instance
  */
 function createWatcher(
-  onFile: (filePath: string) => void
+  onFile: (filePath: string) => void | Promise<void>
 ): any {
   const watcher = chokidar.watch([], {
     persistent: true,
@@ -157,12 +173,27 @@ function createWatcher(
     ],
   });
 
+  // Serialize file processing: chokidar fires 'add'/'change' independently
+  // per file, but onFile() plans against filesystem/DB state that must not
+  // be read concurrently by two in-flight calls (two files landing close
+  // together could otherwise plan to the same destination name and one
+  // would silently overwrite the other). Chain every call onto a single
+  // promise so they run strictly one at a time.
+  let queue: Promise<void> = Promise.resolve();
+  const enqueue = (filePath: string) => {
+    queue = queue
+      .then(() => onFile(filePath))
+      .catch((err) => {
+        console.error(`Error processing watched file ${filePath}:`, err);
+      });
+  };
+
   watcher.on('add', (filePath: string) => {
-    onFile(filePath);
+    enqueue(filePath);
   });
 
   watcher.on('change', (filePath: string) => {
-    onFile(filePath);
+    enqueue(filePath);
   });
 
   return watcher;
@@ -191,4 +222,6 @@ module.exports = {
   createWatcher,
   watchFolder,
   unwatchFolder,
+  isWatchingEnabled,
+  setWatchingEnabled,
 };

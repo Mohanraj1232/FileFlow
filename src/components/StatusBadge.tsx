@@ -10,6 +10,7 @@ const colorMap: Record<string, { bg: string; text: string }> = {
   failed: { bg: "var(--danger-light)", text: "var(--danger)" },
   error: { bg: "var(--danger-light)", text: "var(--danger)" },
   undone: { bg: "var(--bg-tertiary)", text: "var(--text-muted)" },
+  partially_undone: { bg: "var(--warning-light)", text: "var(--warning)" },
   skipped: { bg: "var(--bg-tertiary)", text: "var(--text-muted)" },
   pending: { bg: "var(--accent-light)", text: "var(--accent)" },
   running: { bg: "var(--accent-light)", text: "var(--accent)" },
@@ -30,7 +31,7 @@ export default function StatusBadge({ status, size = "md" }: StatusBadgeProps) {
       className={`inline-flex items-center rounded-full font-medium capitalize ${sizeClass}`}
       style={{ backgroundColor: colors.bg, color: colors.text }}
     >
-      {status}
+      {status.replace(/_/g, " ")}
     </span>
   );
 }

@@ -7,6 +7,12 @@ const { plan, buildSummary } = require('./planner');
 const { executePlan } = require('./executor');
 const journal = require('./journal');
 const { undoOperation, undoStep } = require('./undo');
+const {
+  watchFolder,
+  unwatchFolder,
+  isWatchingEnabled,
+  setWatchingEnabled,
+} = require('./watcher');
 
 /**
  * Recursively walk a directory, returning all file paths.
@@ -73,7 +79,7 @@ function getConflictPolicy(db: any): string {
 /**
  * Register all IPC handlers.
  */
-function registerHandlers(db: any, recentlyWritten: any): void {
+function registerHandlers(db: any, recentlyWritten: any, watcher: any): void {
   // ===== Watched Folders =====
 
   ipcMain.handle('get_watched_folders', () => {
@@ -95,6 +101,8 @@ function registerHandlers(db: any, recentlyWritten: any): void {
         )
         .run(folderPath, recursive ? 1 : 0, now);
 
+      watchFolder(watcher, folderPath);
+
       return db
         .prepare('SELECT * FROM watched_folders WHERE id = ?')
         .get(result.lastInsertRowid);
@@ -102,7 +110,16 @@ function registerHandlers(db: any, recentlyWritten: any): void {
   );
 
   ipcMain.handle('remove_watched_folder', (_event: any, id: number) => {
+    const folder = db
+      .prepare('SELECT * FROM watched_folders WHERE id = ?')
+      .get(id);
+
     db.prepare('DELETE FROM watched_folders WHERE id = ?').run(id);
+
+    if (folder) {
+      unwatchFolder(watcher, folder.path);
+    }
+
     return { success: true };
   });
 
@@ -113,7 +130,20 @@ function registerHandlers(db: any, recentlyWritten: any): void {
         enabled ? 1 : 0,
         id
       );
-      return db.prepare('SELECT * FROM watched_folders WHERE id = ?').get(id);
+
+      const folder = db
+        .prepare('SELECT * FROM watched_folders WHERE id = ?')
+        .get(id);
+
+      if (folder) {
+        if (enabled) {
+          watchFolder(watcher, folder.path);
+        } else {
+          unwatchFolder(watcher, folder.path);
+        }
+      }
+
+      return folder;
     }
   );
 
@@ -525,16 +555,18 @@ function registerHandlers(db: any, recentlyWritten: any): void {
 
   // ===== Watching Control =====
 
-  let watchingActive = false;
-
   ipcMain.handle('start_watching', () => {
-    watchingActive = true;
+    setWatchingEnabled(true);
     return { watching: true };
   });
 
   ipcMain.handle('stop_watching', () => {
-    watchingActive = false;
+    setWatchingEnabled(false);
     return { watching: false };
+  });
+
+  ipcMain.handle('get_watching_status', () => {
+    return { watching: isWatchingEnabled() };
   });
 
   // ===== Dialog =====

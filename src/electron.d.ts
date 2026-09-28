@@ -26,6 +26,7 @@ declare global {
       updateSetting: (key: string, value: string) => Promise<void>;
       startWatching: () => Promise<void>;
       stopWatching: () => Promise<void>;
+      getWatchingStatus: () => Promise<{ watching: boolean }>;
       showOpenDialog: () => Promise<string | null>;
     };
   }

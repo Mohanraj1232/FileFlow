@@ -10,6 +10,8 @@ const {
   unwatchFolder,
   shouldIgnoreFile,
   isFileStable,
+  isWatchingEnabled,
+  setWatchingEnabled,
 } = require('./core/watcher');
 const { getFileMeta } = require('./core/models');
 const { evaluate } = require('./core/engine');
@@ -20,7 +22,6 @@ let mainWindow: any = null;
 let db: any = null;
 let watcher: any = null;
 let recentlyWritten: any = null;
-let watchingEnabled = false;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -55,7 +56,7 @@ function createWindow(): void {
  * Handle a new file detected by the watcher.
  */
 async function handleWatchedFile(filePath: string): Promise<void> {
-  if (!watchingEnabled || !db) return;
+  if (!isWatchingEnabled() || !db) return;
 
   // Skip files written by FileFlow itself
   if (recentlyWritten && recentlyWritten.contains(filePath)) return;
@@ -149,7 +150,7 @@ function startWatchingFolders(): void {
     watchFolder(watcher, folder.path);
   }
 
-  watchingEnabled = true;
+  setWatchingEnabled(true);
 
   // Periodic cleanup of recently written entries
   setInterval(() => {
@@ -172,14 +173,14 @@ app.whenReady().then(() => {
   // Initialize the recently written tracker
   recentlyWritten = new RecentlyWritten(30000);
 
+  // Start file watching (creates `watcher`, needed by registerHandlers below)
+  startWatchingFolders();
+
   // Register all IPC handlers
-  registerHandlers(db, recentlyWritten);
+  registerHandlers(db, recentlyWritten, watcher);
 
   // Create the main window
   createWindow();
-
-  // Start file watching
-  startWatchingFolders();
 
   // macOS: re-create window when dock icon clicked
   app.on('activate', () => {
