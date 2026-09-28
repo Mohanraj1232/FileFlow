@@ -3,7 +3,6 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
 
-
   // Watched Folders
   getWatchedFolders: () => ipcRenderer.invoke('get_watched_folders'),
 
