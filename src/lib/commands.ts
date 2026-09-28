@@ -136,3 +136,7 @@ export async function stopWatching(): Promise<void> {
 export async function getWatchingStatus(): Promise<{ watching: boolean }> {
   return window.electronAPI.getWatchingStatus();
 }
+
+export async function setTitleBarTheme(isDark: boolean): Promise<void> {
+  await window.electronAPI.setTitleBarTheme(isDark);
+}

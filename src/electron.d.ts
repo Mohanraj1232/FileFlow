@@ -3,6 +3,7 @@ export {};
 declare global {
   interface Window {
     electronAPI: {
+      platform: string;
       getWatchedFolders: () => Promise<import("./lib/types").WatchedFolder[]>;
       addWatchedFolder: (path: string, recursive: boolean) => Promise<import("./lib/types").WatchedFolder>;
       removeWatchedFolder: (id: number) => Promise<void>;
@@ -27,6 +28,7 @@ declare global {
       startWatching: () => Promise<void>;
       stopWatching: () => Promise<void>;
       getWatchingStatus: () => Promise<{ watching: boolean }>;
+      setTitleBarTheme: (isDark: boolean) => Promise<{ success: boolean }>;
       showOpenDialog: () => Promise<string | null>;
     };
   }

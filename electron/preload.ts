@@ -1,6 +1,9 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  platform: process.platform,
+
+
   // Watched Folders
   getWatchedFolders: () => ipcRenderer.invoke('get_watched_folders'),
 
@@ -70,6 +73,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopWatching: () => ipcRenderer.invoke('stop_watching'),
 
   getWatchingStatus: () => ipcRenderer.invoke('get_watching_status'),
+
+  // Title Bar
+  setTitleBarTheme: (isDark: boolean) =>
+    ipcRenderer.invoke('set_title_bar_theme', isDark),
 
   // Dialog
   showOpenDialog: () => ipcRenderer.invoke('show_open_dialog'),

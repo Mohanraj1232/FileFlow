@@ -31,10 +31,21 @@ function createWindow(): void {
   }
 
   mainWindow = new BrowserWindow({
-    width: 1100,
-    height: 700,
-    minWidth: 900,
+    width: 1200,
+    height: 780,
+    minWidth: 960,
     minHeight: 600,
+    backgroundColor: '#0d1117',
+    // Custom title bar: the renderer draws its own 40px bar (src/app/TitleBar.tsx)
+    // and the OS overlays real min/max/close controls into it, so window
+    // management (Snap Layouts, accessibility, etc) still works natively.
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
+    titleBarOverlay:
+      process.platform === 'darwin'
+        ? undefined
+        : { color: '#010409', symbolColor: '#8b949e', height: 40 },
+    trafficLightPosition:
+      process.platform === 'darwin' ? { x: 16, y: 12 } : undefined,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -182,8 +193,10 @@ app.whenReady().then(() => {
   // Start file watching (creates `watcher`, needed by registerHandlers below)
   startWatchingFolders();
 
-  // Register all IPC handlers
-  registerHandlers(db, recentlyWritten, watcher);
+  // Register all IPC handlers. mainWindow doesn't exist yet (createWindow
+  // runs after this), so handlers that need it (e.g. title-bar theming)
+  // are given an accessor rather than the window itself.
+  registerHandlers(db, recentlyWritten, watcher, () => mainWindow);
 
   // Create the main window
   createWindow();

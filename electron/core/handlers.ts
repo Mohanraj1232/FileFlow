@@ -79,7 +79,12 @@ function getConflictPolicy(db: any): string {
 /**
  * Register all IPC handlers.
  */
-function registerHandlers(db: any, recentlyWritten: any, watcher: any): void {
+function registerHandlers(
+  db: any,
+  recentlyWritten: any,
+  watcher: any,
+  getMainWindow: () => any
+): void {
   // ===== Watched Folders =====
 
   ipcMain.handle('get_watched_folders', () => {
@@ -568,6 +573,25 @@ function registerHandlers(db: any, recentlyWritten: any, watcher: any): void {
   ipcMain.handle('get_watching_status', () => {
     return { watching: isWatchingEnabled() };
   });
+
+  // ===== Title Bar =====
+
+  ipcMain.handle(
+    'set_title_bar_theme',
+    (_event: any, isDark: boolean) => {
+      const win = getMainWindow();
+      // macOS uses hiddenInset (native traffic lights); overlay only
+      // applies on Windows/Linux where we draw the min/max/close area.
+      if (win && typeof win.setTitleBarOverlay === 'function') {
+        win.setTitleBarOverlay({
+          color: isDark ? '#010409' : '#ffffff',
+          symbolColor: isDark ? '#8b949e' : '#656d76',
+          height: 40,
+        });
+      }
+      return { success: true };
+    }
+  );
 
   // ===== Dialog =====
 

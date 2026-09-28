@@ -1,27 +1,36 @@
 import { NavLink } from "react-router-dom";
-import {
-  LayoutDashboard,
-  ListFilter,
-  Eye,
-  Clock,
-  Inbox,
-  Settings2,
-  Play,
-  Pause,
-  FileStack,
-} from "lucide-react";
+import { Play, Pause } from "lucide-react";
 import { useState, useEffect } from "react";
 import { startWatching, stopWatching, getWatchingStatus } from "../lib/commands";
 import { useToast } from "../components/Toast";
+import { navGroups, settingsNavItem, type NavItem } from "./nav";
+import Button from "../components/ui/Button";
 
-const navItems = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/rules", label: "Rules", icon: ListFilter },
-  { to: "/preview", label: "Preview", icon: Eye },
-  { to: "/history", label: "History", icon: Clock },
-  { to: "/unsorted", label: "Unsorted", icon: Inbox },
-  { to: "/settings", label: "Settings", icon: Settings2 },
-];
+function SidebarLink({ to, label, icon: Icon }: NavItem) {
+  return (
+    <NavLink
+      to={to}
+      end={to === "/"}
+      className={({ isActive }) =>
+        `relative flex items-center gap-2.5 rounded-md py-2 pl-3 pr-2.5 text-sm font-medium transition-colors ${
+          isActive
+            ? "bg-accent-soft text-fg"
+            : "text-fg-muted hover:bg-hover hover:text-fg"
+        }`
+      }
+    >
+      {({ isActive }) => (
+        <>
+          {isActive && (
+            <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-accent" />
+          )}
+          <Icon size={16} className="shrink-0" />
+          {label}
+        </>
+      )}
+    </NavLink>
+  );
+}
 
 export default function Sidebar() {
   const [watching, setWatching] = useState(false);
@@ -57,99 +66,44 @@ export default function Sidebar() {
   }
 
   return (
-    <aside
-      className="fixed left-0 top-0 bottom-0 w-60 flex flex-col z-10"
-      style={{ backgroundColor: "var(--bg-sidebar)" }}
-    >
-      <div className="px-5 py-6 flex items-center gap-3">
-        <div
-          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-          style={{
-            background: "linear-gradient(135deg, var(--accent), var(--accent-hover))",
-            boxShadow: "var(--shadow-md)",
-          }}
-        >
-          <FileStack size={20} color="white" />
-        </div>
-        <div>
-          <h1
-            className="text-lg font-bold tracking-tight"
-            style={{ color: "var(--text-sidebar)" }}
-          >
-            FileFlow
-          </h1>
-          <p className="text-[10px]" style={{ color: "var(--text-sidebar-muted)" }}>
-            Your files. Automatically organized.
-          </p>
-        </div>
-      </div>
-
-      <nav className="flex-1 px-3 space-y-0.5">
-        {navItems.map(({ to, label, icon: Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={to === "/"}
-            className="flex items-center gap-3 pl-[13px] pr-4 py-2.5 rounded-lg text-sm font-medium transition-colors"
-            style={({ isActive }) => ({
-              backgroundColor: isActive ? "var(--bg-sidebar-active)" : "transparent",
-              color: isActive ? "var(--text-sidebar)" : "var(--text-sidebar-muted)",
-              borderLeft: isActive
-                ? "3px solid var(--accent)"
-                : "3px solid transparent",
-            })}
-            onMouseEnter={(e) => {
-              if (!e.currentTarget.classList.contains("active"))
-                e.currentTarget.style.backgroundColor = "var(--bg-sidebar-hover)";
-            }}
-            onMouseLeave={(e) => {
-              const isActive = e.currentTarget.getAttribute("aria-current") === "page";
-              e.currentTarget.style.backgroundColor = isActive
-                ? "var(--bg-sidebar-active)"
-                : "transparent";
-            }}
-          >
-            <Icon size={18} />
-            {label}
-          </NavLink>
+    <aside className="flex flex-col overflow-y-auto border-r border-border bg-surface">
+      <nav className="flex-1 space-y-4 px-3 py-4">
+        {navGroups.map((group) => (
+          <div key={group.label}>
+            <p className="px-2.5 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">
+              {group.label}
+            </p>
+            <div className="space-y-0.5">
+              {group.items.map((item) => (
+                <SidebarLink key={item.to} {...item} />
+              ))}
+            </div>
+          </div>
         ))}
       </nav>
 
-      <div
-        className="px-4 py-4 mx-3 mb-3 rounded-lg"
-        style={{ backgroundColor: "var(--bg-sidebar-active)" }}
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span
-              className="w-2 h-2 rounded-full"
-              style={{
-                backgroundColor: watching ? "var(--success)" : "var(--warning)",
-              }}
-            />
-            <span
-              className="text-xs font-medium"
-              style={{ color: "var(--text-sidebar)" }}
-            >
-              {watching ? "Watching" : "Paused"}
-            </span>
-          </div>
-          <button
-            onClick={handleToggleWatch}
-            disabled={toggling}
-            className="p-1.5 rounded-md cursor-pointer transition-colors disabled:opacity-50"
-            style={{ color: "var(--text-sidebar-muted)" }}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.color = "var(--text-sidebar)")
-            }
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.color = "var(--text-sidebar-muted)")
-            }
-            title={watching ? "Pause watching" : "Start watching"}
-          >
-            {watching ? <Pause size={14} /> : <Play size={14} />}
-          </button>
+      <div className="border-t border-border-muted px-3 py-3">
+        <SidebarLink {...settingsNavItem} />
+      </div>
+
+      <div className="mx-3 mb-3 flex items-center justify-between rounded-lg bg-inset px-3 py-2.5">
+        <div className="flex items-center gap-2">
+          <span
+            className={`h-2 w-2 rounded-full ${watching ? "bg-success" : "bg-warning"}`}
+          />
+          <span className="text-xs font-medium text-fg">
+            {watching ? "Watching" : "Paused"}
+          </span>
         </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          iconOnly
+          aria-label={watching ? "Pause watching" : "Start watching"}
+          icon={watching ? <Pause size={14} /> : <Play size={14} />}
+          onClick={handleToggleWatch}
+          disabled={toggling}
+        />
       </div>
     </aside>
   );
