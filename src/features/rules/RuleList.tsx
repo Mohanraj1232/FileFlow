@@ -6,6 +6,12 @@ import { getRules, deleteRule, toggleRule } from "../../lib/commands";
 import Toggle from "../../components/Toggle";
 import EmptyState from "../../components/EmptyState";
 import Modal from "../../components/Modal";
+import Badge from "../../components/ui/Badge";
+import Button from "../../components/ui/Button";
+import PageHeader from "../../components/ui/PageHeader";
+import { Card } from "../../components/ui/Card";
+import { Table, THead, Th, TRow, Td } from "../../components/ui/Table";
+import { LoadingState } from "../../components/ui/Spinner";
 
 function summarizeCondition(cond: Condition): string {
   if ("all" in cond) {
@@ -68,52 +74,26 @@ export default function RuleList() {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div
-          className="w-8 h-8 border-3 border-t-transparent rounded-full animate-spin"
-          style={{ borderColor: "var(--accent)", borderTopColor: "transparent" }}
-        />
-      </div>
-    );
-  }
+  if (loading) return <LoadingState />;
 
   return (
-    <div className="space-y-6 max-w-5xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
-            Rules
-          </h1>
-          <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
-            Define how your files should be organized
-          </p>
-        </div>
-        <button
-          onClick={() => navigate("/rules/new")}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
-          style={{ backgroundColor: "var(--accent)" }}
-          onMouseEnter={(e) =>
-            (e.currentTarget.style.backgroundColor = "var(--accent-hover)")
-          }
-          onMouseLeave={(e) =>
-            (e.currentTarget.style.backgroundColor = "var(--accent)")
-          }
-        >
-          <Plus size={16} />
-          New Rule
-        </button>
-      </div>
+    <div>
+      <PageHeader
+        title="Rules"
+        description="Define how your files should be organized"
+        actions={
+          <Button
+            variant="primary"
+            onClick={() => navigate("/rules/new")}
+            icon={<Plus size={14} />}
+          >
+            New Rule
+          </Button>
+        }
+      />
 
       {rules.length === 0 ? (
-        <div
-          className="rounded-xl"
-          style={{
-            backgroundColor: "var(--bg-primary)",
-            border: "1px solid var(--border-color)",
-          }}
-        >
+        <Card>
           <EmptyState
             icon={ListFilter}
             title="No rules yet"
@@ -121,128 +101,68 @@ export default function RuleList() {
             actionLabel="Create Rule"
             onAction={() => navigate("/rules/new")}
           />
-        </div>
+        </Card>
       ) : (
-        <div
-          className="rounded-xl overflow-hidden"
-          style={{
-            backgroundColor: "var(--bg-primary)",
-            border: "1px solid var(--border-color)",
-            boxShadow: "var(--shadow-sm)",
-          }}
-        >
-          <table className="w-full">
-            <thead>
-              <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
-                <th className="w-8 px-4 py-3" />
-                <th
-                  className="text-left text-xs font-medium uppercase tracking-wider px-4 py-3"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  Rule
-                </th>
-                <th
-                  className="text-left text-xs font-medium uppercase tracking-wider px-4 py-3"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  Conditions
-                </th>
-                <th
-                  className="text-center text-xs font-medium uppercase tracking-wider px-4 py-3"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  Priority
-                </th>
-                <th
-                  className="text-center text-xs font-medium uppercase tracking-wider px-4 py-3"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  Enabled
-                </th>
-                <th className="w-24 px-4 py-3" />
+        <Card className="overflow-hidden">
+          <Table>
+            <THead>
+              <tr>
+                <Th className="w-8" />
+                <Th>Rule</Th>
+                <Th>Conditions</Th>
+                <Th className="text-center">Priority</Th>
+                <Th className="text-center">Enabled</Th>
+                <Th className="w-24" />
               </tr>
-            </thead>
+            </THead>
             <tbody>
               {rules.map((rule) => (
-                <tr
-                  key={rule.id}
-                  style={{ borderBottom: "1px solid var(--border-color)" }}
-                  className="group"
-                >
-                  <td className="px-4 py-3">
-                    <GripVertical
-                      size={14}
-                      style={{ color: "var(--text-muted)" }}
-                      className="cursor-grab"
-                    />
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className="text-sm font-medium"
-                      style={{ color: "var(--text-primary)" }}
-                    >
-                      {rule.name}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className="text-xs"
-                      style={{ color: "var(--text-secondary)" }}
-                    >
-                      {summarizeCondition(rule.condition)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span
-                      className="text-xs font-mono"
-                      style={{ color: "var(--text-muted)" }}
-                    >
-                      {rule.priority}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <Toggle
-                      checked={rule.enabled}
-                      onChange={() => handleToggle(rule)}
-                    />
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1 justify-end">
-                      <button
-                        onClick={() => navigate(`/rules/${rule.id}/edit`)}
-                        className="p-1.5 rounded-md cursor-pointer"
-                        style={{ color: "var(--text-muted)" }}
-                        onMouseEnter={(e) =>
-                          (e.currentTarget.style.color = "var(--accent)")
-                        }
-                        onMouseLeave={(e) =>
-                          (e.currentTarget.style.color = "var(--text-muted)")
-                        }
-                        title="Edit rule"
-                      >
-                        <Pencil size={14} />
-                      </button>
-                      <button
-                        onClick={() => setDeleteTarget(rule)}
-                        className="p-1.5 rounded-md cursor-pointer"
-                        style={{ color: "var(--text-muted)" }}
-                        onMouseEnter={(e) =>
-                          (e.currentTarget.style.color = "var(--danger)")
-                        }
-                        onMouseLeave={(e) =>
-                          (e.currentTarget.style.color = "var(--text-muted)")
-                        }
-                        title="Delete rule"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                <TRow key={rule.id}>
+                  <Td>
+                    <GripVertical size={14} className="cursor-grab text-fg-subtle" />
+                  </Td>
+                  <Td>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-fg">{rule.name}</span>
+                      <Badge tone="neutral" size="sm">
+                        {rule.trigger}
+                      </Badge>
                     </div>
-                  </td>
-                </tr>
+                  </Td>
+                  <Td className="text-fg-muted">
+                    <code className="text-xs">{summarizeCondition(rule.condition)}</code>
+                  </Td>
+                  <Td className="text-center font-mono text-xs text-fg-muted">
+                    {rule.priority}
+                  </Td>
+                  <Td className="text-center">
+                    <Toggle checked={rule.enabled} onChange={() => handleToggle(rule)} />
+                  </Td>
+                  <Td>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        iconOnly
+                        aria-label="Edit rule"
+                        icon={<Pencil size={14} />}
+                        onClick={() => navigate(`/rules/${rule.id}/edit`)}
+                      />
+                      <Button
+                        variant="ghostDanger"
+                        size="sm"
+                        iconOnly
+                        aria-label="Delete rule"
+                        icon={<Trash2 size={14} />}
+                        onClick={() => setDeleteTarget(rule)}
+                      />
+                    </div>
+                  </Td>
+                </TRow>
               ))}
             </tbody>
-          </table>
-        </div>
+          </Table>
+        </Card>
       )}
 
       <Modal
@@ -250,28 +170,17 @@ export default function RuleList() {
         onClose={() => setDeleteTarget(null)}
         title="Delete Rule"
       >
-        <p className="text-sm mb-6" style={{ color: "var(--text-secondary)" }}>
+        <p className="mb-6 text-sm text-fg-muted">
           Are you sure you want to delete &ldquo;{deleteTarget?.name}&rdquo;? This action
           cannot be undone.
         </p>
         <div className="flex justify-end gap-3">
-          <button
-            onClick={() => setDeleteTarget(null)}
-            className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer"
-            style={{
-              backgroundColor: "var(--bg-tertiary)",
-              color: "var(--text-primary)",
-            }}
-          >
+          <Button variant="secondary" onClick={() => setDeleteTarget(null)}>
             Cancel
-          </button>
-          <button
-            onClick={handleDelete}
-            className="px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
-            style={{ backgroundColor: "var(--danger)" }}
-          >
+          </Button>
+          <Button variant="danger" onClick={handleDelete}>
             Delete
-          </button>
+          </Button>
         </div>
       </Modal>
     </div>

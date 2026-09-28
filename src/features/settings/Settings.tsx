@@ -1,10 +1,37 @@
 import { useState, useEffect } from "react";
+import type { ReactNode } from "react";
 import { Save, Plus, X, Sun, Moon, Monitor } from "lucide-react";
 import type { AppSettings, ConflictPolicy } from "../../lib/types";
 import { getSettings, updateSetting } from "../../lib/commands";
 import { applyTheme as applyThemeToDocument } from "../../lib/theme";
 import { useToast } from "../../components/Toast";
-import Button from "../../components/Button";
+import Button from "../../components/ui/Button";
+import PageHeader from "../../components/ui/PageHeader";
+import { Card, CardHeader, CardBody } from "../../components/ui/Card";
+import { Input, Select } from "../../components/ui/Field";
+import { LoadingState } from "../../components/ui/Spinner";
+
+function SettingRow({
+  label,
+  description,
+  children,
+}: {
+  label: string;
+  description?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-6">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-fg">{label}</p>
+        {description && (
+          <p className="mt-0.5 text-xs text-fg-muted">{description}</p>
+        )}
+      </div>
+      <div className="shrink-0">{children}</div>
+    </div>
+  );
+}
 
 export default function Settings() {
   const [settings, setSettings] = useState<AppSettings>({
@@ -79,16 +106,7 @@ export default function Settings() {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div
-          className="w-8 h-8 border-3 border-t-transparent rounded-full animate-spin"
-          style={{ borderColor: "var(--accent)", borderTopColor: "transparent" }}
-        />
-      </div>
-    );
-  }
+  if (loading) return <LoadingState />;
 
   const themeOptions: { value: "light" | "dark" | "system"; icon: typeof Sun; label: string }[] = [
     { value: "light", icon: Sun, label: "Light" },
@@ -97,261 +115,148 @@ export default function Settings() {
   ];
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <div>
-        <h1 className="text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
-          Settings
-        </h1>
-        <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
-          Configure FileFlow behavior
-        </p>
-      </div>
+    <div>
+      <PageHeader title="Settings" description="Configure FileFlow behavior" />
 
-      {/* Theme */}
-      <div
-        className="rounded-xl p-6"
-        style={{
-          backgroundColor: "var(--bg-primary)",
-          border: "1px solid var(--border-color)",
-          boxShadow: "var(--shadow-sm)",
-        }}
-      >
-        <h2
-          className="text-base font-semibold mb-4"
-          style={{ color: "var(--text-primary)" }}
-        >
-          Appearance
-        </h2>
-        <label
-          className="block text-xs font-medium mb-2"
-          style={{ color: "var(--text-secondary)" }}
-        >
-          Theme
-        </label>
-        <div
-          className="inline-flex rounded-lg overflow-hidden"
-          style={{ border: "1px solid var(--border-color)" }}
-        >
-          {themeOptions.map(({ value, icon: Icon, label }) => (
-            <button
-              key={value}
-              onClick={() => applyTheme(value)}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium cursor-pointer"
-              style={{
-                backgroundColor:
-                  settings.theme === value
-                    ? "var(--accent)"
-                    : "var(--bg-secondary)",
-                color:
-                  settings.theme === value ? "white" : "var(--text-secondary)",
-              }}
-            >
-              <Icon size={14} />
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <div className="max-w-2xl space-y-4">
+        <Card>
+          <CardHeader title="Appearance" />
+          <CardBody>
+            <SettingRow label="Theme" description="Applies immediately and syncs the title bar">
+              <div className="inline-flex overflow-hidden rounded-md border border-border">
+                {themeOptions.map(({ value, icon: Icon, label }) => (
+                  <button
+                    key={value}
+                    onClick={() => applyTheme(value)}
+                    className={`flex cursor-pointer items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
+                      settings.theme === value
+                        ? "bg-accent text-white"
+                        : "bg-inset text-fg-muted hover:text-fg"
+                    }`}
+                  >
+                    <Icon size={13} />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </SettingRow>
+          </CardBody>
+        </Card>
 
-      {/* File Handling */}
-      <div
-        className="rounded-xl p-6 space-y-5"
-        style={{
-          backgroundColor: "var(--bg-primary)",
-          border: "1px solid var(--border-color)",
-          boxShadow: "var(--shadow-sm)",
-        }}
-      >
-        <h2
-          className="text-base font-semibold"
-          style={{ color: "var(--text-primary)" }}
-        >
-          File Handling
-        </h2>
-
-        <div>
-          <label
-            className="block text-xs font-medium mb-1.5"
-            style={{ color: "var(--text-secondary)" }}
-          >
-            Default conflict policy
-          </label>
-          <select
-            value={settings.conflict_default}
-            onChange={(e) =>
-              setSettings((s) => ({
-                ...s,
-                conflict_default: e.target.value as ConflictPolicy,
-              }))
-            }
-            className="w-full max-w-sm px-3 py-2 rounded-lg text-sm cursor-pointer"
-            style={{
-              backgroundColor: "var(--bg-secondary)",
-              color: "var(--text-primary)",
-              border: "1px solid var(--border-color)",
-            }}
-          >
-            <option value="auto_rename">Auto-rename (e.g., file (2).pdf)</option>
-            <option value="skip">Skip</option>
-            <option value="replace_if_duplicate">
-              Replace if duplicate (same hash)
-            </option>
-          </select>
-        </div>
-
-        <div>
-          <label
-            className="block text-xs font-medium mb-1.5"
-            style={{ color: "var(--text-secondary)" }}
-          >
-            Notification level
-          </label>
-          <select
-            value={settings.notification_level}
-            onChange={(e) =>
-              setSettings((s) => ({
-                ...s,
-                notification_level: e.target.value as AppSettings["notification_level"],
-              }))
-            }
-            className="w-full max-w-sm px-3 py-2 rounded-lg text-sm cursor-pointer"
-            style={{
-              backgroundColor: "var(--bg-secondary)",
-              color: "var(--text-primary)",
-              border: "1px solid var(--border-color)",
-            }}
-          >
-            <option value="all">All (one per file)</option>
-            <option value="batched">Batched (summary every few files)</option>
-            <option value="errors_only">Errors only</option>
-            <option value="none">None</option>
-          </select>
-        </div>
-
-        <div>
-          <label
-            className="block text-xs font-medium mb-1.5"
-            style={{ color: "var(--text-secondary)" }}
-          >
-            Scan schedule (minutes)
-          </label>
-          <input
-            type="number"
-            min={5}
-            max={1440}
-            value={settings.scan_schedule_minutes}
-            onChange={(e) =>
-              setSettings((s) => ({
-                ...s,
-                scan_schedule_minutes: Number(e.target.value) || 60,
-              }))
-            }
-            className="w-32 px-3 py-2 rounded-lg text-sm outline-none"
-            style={{
-              backgroundColor: "var(--bg-secondary)",
-              color: "var(--text-primary)",
-              border: "1px solid var(--border-color)",
-            }}
-          />
-        </div>
-      </div>
-
-      {/* Ignore Patterns */}
-      <div
-        className="rounded-xl p-6"
-        style={{
-          backgroundColor: "var(--bg-primary)",
-          border: "1px solid var(--border-color)",
-          boxShadow: "var(--shadow-sm)",
-        }}
-      >
-        <h2
-          className="text-base font-semibold mb-4"
-          style={{ color: "var(--text-primary)" }}
-        >
-          Ignore Patterns
-        </h2>
-        <p
-          className="text-xs mb-3"
-          style={{ color: "var(--text-secondary)" }}
-        >
-          Files matching these patterns will always be skipped.
-        </p>
-
-        <div className="flex gap-2 mb-3">
-          <input
-            type="text"
-            value={newPattern}
-            onChange={(e) => setNewPattern(e.target.value)}
-            placeholder="e.g., *.tmp, .DS_Store"
-            className="flex-1 max-w-sm px-3 py-2 rounded-lg text-sm outline-none"
-            style={{
-              backgroundColor: "var(--bg-secondary)",
-              color: "var(--text-primary)",
-              border: "1px solid var(--border-color)",
-            }}
-            onKeyDown={(e) => e.key === "Enter" && addPattern()}
-          />
-          <button
-            onClick={addPattern}
-            className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer"
-            style={{
-              backgroundColor: "var(--bg-tertiary)",
-              color: "var(--text-primary)",
-              border: "1px solid var(--border-color)",
-            }}
-          >
-            <Plus size={14} />
-            Add
-          </button>
-        </div>
-
-        {settings.ignore_patterns.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {settings.ignore_patterns.map((p) => (
-              <span
-                key={p}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono"
-                style={{
-                  backgroundColor: "var(--bg-tertiary)",
-                  color: "var(--text-secondary)",
-                }}
+        <Card>
+          <CardHeader title="File Handling" />
+          <CardBody className="space-y-4">
+            <SettingRow label="Default conflict policy">
+              <Select
+                value={settings.conflict_default}
+                onChange={(e) =>
+                  setSettings((s) => ({
+                    ...s,
+                    conflict_default: e.target.value as ConflictPolicy,
+                  }))
+                }
+                className="w-64"
               >
-                {p}
-                <button
-                  onClick={() => removePattern(p)}
-                  className="cursor-pointer"
-                  style={{ color: "var(--text-muted)" }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.color = "var(--danger)")
-                  }
-                  onMouseLeave={(e) =>
-                    (e.currentTarget.style.color = "var(--text-muted)")
-                  }
-                >
-                  <X size={12} />
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
+                <option value="auto_rename">Auto-rename (e.g., file (2).pdf)</option>
+                <option value="skip">Skip</option>
+                <option value="replace_if_duplicate">
+                  Replace if duplicate (same hash)
+                </option>
+              </Select>
+            </SettingRow>
 
-      {/* Save */}
-      <div className="flex items-center gap-3 pb-8">
-        <Button
-          variant="primary"
-          onClick={handleSave}
-          loading={saving}
-          icon={<Save size={16} />}
-        >
-          {saving ? "Saving..." : "Save Settings"}
-        </Button>
-        {saved && (
-          <span className="text-sm" style={{ color: "var(--success)" }}>
-            Settings saved!
-          </span>
-        )}
+            <SettingRow label="Notification level">
+              <Select
+                value={settings.notification_level}
+                onChange={(e) =>
+                  setSettings((s) => ({
+                    ...s,
+                    notification_level: e.target.value as AppSettings["notification_level"],
+                  }))
+                }
+                className="w-64"
+              >
+                <option value="all">All (one per file)</option>
+                <option value="batched">Batched (summary every few files)</option>
+                <option value="errors_only">Errors only</option>
+                <option value="none">None</option>
+              </Select>
+            </SettingRow>
+
+            <SettingRow
+              label="Scan schedule"
+              description="How often watched folders are rescanned, in minutes"
+            >
+              <Input
+                type="number"
+                min={5}
+                max={1440}
+                value={settings.scan_schedule_minutes}
+                onChange={(e) =>
+                  setSettings((s) => ({
+                    ...s,
+                    scan_schedule_minutes: Number(e.target.value) || 60,
+                  }))
+                }
+                className="w-24"
+              />
+            </SettingRow>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="Ignore Patterns"
+            description="Files matching these patterns will always be skipped"
+          />
+          <CardBody>
+            <div className="mb-3 flex gap-2">
+              <Input
+                type="text"
+                value={newPattern}
+                onChange={(e) => setNewPattern(e.target.value)}
+                placeholder="e.g., *.tmp, .DS_Store"
+                className="max-w-sm flex-1"
+                onKeyDown={(e) => e.key === "Enter" && addPattern()}
+              />
+              <Button variant="secondary" icon={<Plus size={14} />} onClick={addPattern}>
+                Add
+              </Button>
+            </div>
+
+            {settings.ignore_patterns.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {settings.ignore_patterns.map((p) => (
+                  <span
+                    key={p}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-hover px-2.5 py-1 font-mono text-xs text-fg-muted"
+                  >
+                    {p}
+                    <button
+                      onClick={() => removePattern(p)}
+                      className="cursor-pointer text-fg-subtle transition-colors hover:text-danger"
+                      aria-label={`Remove pattern ${p}`}
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </CardBody>
+        </Card>
+
+        <div className="sticky bottom-4 flex items-center gap-3 rounded-xl border border-border bg-surface px-5 py-4 shadow-pop">
+          <Button
+            variant="primary"
+            onClick={handleSave}
+            loading={saving}
+            icon={<Save size={16} />}
+          >
+            {saving ? "Saving..." : "Save Settings"}
+          </Button>
+          {saved && <span className="text-sm text-success">Settings saved!</span>}
+        </div>
       </div>
     </div>
   );

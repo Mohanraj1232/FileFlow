@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
-import { Play, Eye, CheckSquare, Square, Loader2 } from "lucide-react";
+import { Play, Eye } from "lucide-react";
 import type { WatchedFolder, PlanSummary, PlannedStep } from "../../lib/types";
 import {
   getWatchedFolders,
@@ -9,18 +9,22 @@ import {
 } from "../../lib/commands";
 import StatusBadge from "../../components/StatusBadge";
 import EmptyState from "../../components/EmptyState";
+import Badge from "../../components/ui/Badge";
+import Button from "../../components/ui/Button";
+import PageHeader from "../../components/ui/PageHeader";
+import { Card, CardBody } from "../../components/ui/Card";
+import { Select } from "../../components/ui/Field";
+import { Table, THead, Th, TRow, Td } from "../../components/ui/Table";
+import { useToast } from "../../components/Toast";
 
 export default function Preview() {
   const { folderId: paramFolderId } = useParams();
+  const { addToast } = useToast();
   const [folders, setFolders] = useState<WatchedFolder[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<number | "">("");
   const [plan, setPlan] = useState<PlanSummary | null>(null);
   const [scanning, setScanning] = useState(false);
   const [applying, setApplying] = useState(false);
-  const [message, setMessage] = useState<{
-    type: "success" | "error";
-    text: string;
-  } | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -42,12 +46,11 @@ export default function Preview() {
     if (!selectedFolder) return;
     setScanning(true);
     setPlan(null);
-    setMessage(null);
     try {
       const result = await previewFolder(selectedFolder as number);
       setPlan(result);
     } catch (e) {
-      setMessage({ type: "error", text: String(e) });
+      addToast({ type: "error", text: String(e) });
     } finally {
       setScanning(false);
     }
@@ -77,20 +80,19 @@ export default function Preview() {
       .filter((s) => s.selected)
       .map((s) => s.src_path);
     if (selectedPaths.length === 0) {
-      setMessage({ type: "error", text: "No files selected." });
+      addToast({ type: "error", text: "No files selected." });
       return;
     }
     setApplying(true);
-    setMessage(null);
     try {
       const op = await applyPlan(selectedFolder as number, selectedPaths);
-      setMessage({
+      addToast({
         type: "success",
         text: `Operation completed: ${op.summary ?? "files organized successfully"}.`,
       });
       setPlan(null);
     } catch (e) {
-      setMessage({ type: "error", text: String(e) });
+      addToast({ type: "error", text: String(e) });
     } finally {
       setApplying(false);
     }
@@ -99,62 +101,18 @@ export default function Preview() {
   const selectedCount = plan?.steps.filter((s) => s.selected).length ?? 0;
 
   return (
-    <div className="space-y-6 max-w-5xl">
-      <div>
-        <h1
-          className="text-2xl font-bold"
-          style={{ color: "var(--text-primary)" }}
-        >
-          Preview
-        </h1>
-        <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
-          Scan a folder, review the plan, then apply
-        </p>
-      </div>
-
-      {message && (
-        <div
-          className="px-4 py-3 rounded-lg text-sm"
-          style={{
-            backgroundColor:
-              message.type === "success"
-                ? "var(--success-light)"
-                : "var(--danger-light)",
-            color:
-              message.type === "success" ? "var(--success)" : "var(--danger)",
-          }}
-        >
-          {message.text}
-        </div>
-      )}
-
-      <div
-        className="rounded-xl p-6"
-        style={{
-          backgroundColor: "var(--bg-primary)",
-          border: "1px solid var(--border-color)",
-          boxShadow: "var(--shadow-sm)",
-        }}
-      >
-        <div className="flex items-end gap-3">
-          <div className="flex-1">
-            <label
-              className="block text-xs font-medium mb-1.5"
-              style={{ color: "var(--text-secondary)" }}
-            >
-              Folder to scan
-            </label>
-            <select
+    <div className="pb-4">
+      <PageHeader
+        title="Preview"
+        description="Scan a folder, review the plan, then apply"
+        actions={
+          <>
+            <Select
               value={selectedFolder}
               onChange={(e) =>
                 setSelectedFolder(e.target.value ? Number(e.target.value) : "")
               }
-              className="w-full px-3 py-2 rounded-lg text-sm cursor-pointer"
-              style={{
-                backgroundColor: "var(--bg-secondary)",
-                color: "var(--text-primary)",
-                border: "1px solid var(--border-color)",
-              }}
+              className="w-64"
             >
               <option value="">Select a folder...</option>
               {folders.map((f) => (
@@ -162,258 +120,120 @@ export default function Preview() {
                   {f.path}
                 </option>
               ))}
-            </select>
-          </div>
-          <button
-            onClick={handleScan}
-            disabled={!selectedFolder || scanning}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-50"
-            style={{ backgroundColor: "var(--accent)" }}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.backgroundColor = "var(--accent-hover)")
-            }
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.backgroundColor = "var(--accent)")
-            }
-          >
-            {scanning ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <Eye size={16} />
-            )}
-            {scanning ? "Scanning..." : "Scan"}
-          </button>
-        </div>
-      </div>
+            </Select>
+            <Button
+              variant="primary"
+              disabled={!selectedFolder || scanning}
+              loading={scanning}
+              icon={<Eye size={16} />}
+              onClick={handleScan}
+            >
+              {scanning ? "Scanning..." : "Scan"}
+            </Button>
+          </>
+        }
+      />
 
       {plan && (
-        <>
-          {/* Summary bar */}
-          <div
-            className="rounded-xl p-4 flex items-center justify-between flex-wrap gap-3"
-            style={{
-              backgroundColor: "var(--bg-primary)",
-              border: "1px solid var(--border-color)",
-              boxShadow: "var(--shadow-sm)",
-            }}
-          >
-            <div
-              className="flex items-center gap-4 text-xs"
-              style={{ color: "var(--text-secondary)" }}
-            >
-              <span>
-                <strong style={{ color: "var(--text-primary)" }}>
-                  {plan.move_count}
-                </strong>{" "}
-                move
-              </span>
-              <span>
-                <strong style={{ color: "var(--text-primary)" }}>
-                  {plan.copy_count}
-                </strong>{" "}
-                copy
-              </span>
-              <span>
-                <strong style={{ color: "var(--text-primary)" }}>
-                  {plan.rename_count}
-                </strong>{" "}
-                rename
-              </span>
-              <span>
-                <strong style={{ color: "var(--text-primary)" }}>
-                  {plan.trash_count}
-                </strong>{" "}
-                trash
-              </span>
-              <span>
-                <strong style={{ color: "var(--text-primary)" }}>
-                  {plan.no_match_count}
-                </strong>{" "}
-                no match
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => toggleAll(true)}
-                className="text-xs px-2 py-1 rounded cursor-pointer"
-                style={{
-                  color: "var(--accent)",
-                  backgroundColor: "var(--accent-light)",
-                }}
-              >
-                Select all
-              </button>
-              <button
-                onClick={() => toggleAll(false)}
-                className="text-xs px-2 py-1 rounded cursor-pointer"
-                style={{
-                  color: "var(--text-secondary)",
-                  backgroundColor: "var(--bg-tertiary)",
-                }}
-              >
-                Deselect all
-              </button>
-            </div>
-          </div>
+        <div className="space-y-4">
+          <Card>
+            <CardBody className="flex flex-wrap items-center justify-between gap-3 !py-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone="accent">{plan.move_count} move</Badge>
+                <Badge tone="accent">{plan.copy_count} copy</Badge>
+                <Badge tone="accent">{plan.rename_count} rename</Badge>
+                <Badge tone="warning">{plan.trash_count} trash</Badge>
+                <Badge tone="neutral">{plan.no_match_count} no match</Badge>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="soft" size="sm" onClick={() => toggleAll(true)}>
+                  Select all
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => toggleAll(false)}>
+                  Deselect all
+                </Button>
+              </div>
+            </CardBody>
+          </Card>
 
-          {/* Steps table */}
           {plan.steps.length === 0 ? (
-            <div
-              className="rounded-xl"
-              style={{
-                backgroundColor: "var(--bg-primary)",
-                border: "1px solid var(--border-color)",
-              }}
-            >
+            <Card>
               <EmptyState
                 icon={Eye}
                 title="Nothing to organize"
                 description="All files in this folder already match their rules or have no matching rules."
               />
-            </div>
+            </Card>
           ) : (
-            <div
-              className="rounded-xl overflow-hidden"
-              style={{
-                backgroundColor: "var(--bg-primary)",
-                border: "1px solid var(--border-color)",
-                boxShadow: "var(--shadow-sm)",
-              }}
-            >
-              <table className="w-full">
-                <thead>
-                  <tr
-                    style={{
-                      borderBottom: "1px solid var(--border-color)",
-                    }}
-                  >
-                    <th className="w-10 px-4 py-3" />
-                    <th
-                      className="text-left text-xs font-medium uppercase tracking-wider px-4 py-3"
-                      style={{ color: "var(--text-muted)" }}
-                    >
-                      File
-                    </th>
-                    <th
-                      className="text-left text-xs font-medium uppercase tracking-wider px-4 py-3"
-                      style={{ color: "var(--text-muted)" }}
-                    >
-                      Rule
-                    </th>
-                    <th
-                      className="text-center text-xs font-medium uppercase tracking-wider px-4 py-3"
-                      style={{ color: "var(--text-muted)" }}
-                    >
-                      Action
-                    </th>
-                    <th
-                      className="text-left text-xs font-medium uppercase tracking-wider px-4 py-3"
-                      style={{ color: "var(--text-muted)" }}
-                    >
-                      Destination
-                    </th>
+            <Card className="overflow-hidden pb-16">
+              <Table>
+                <THead>
+                  <tr>
+                    <Th className="w-10" />
+                    <Th>File</Th>
+                    <Th>Rule</Th>
+                    <Th className="text-center">Action</Th>
+                    <Th>Destination</Th>
                   </tr>
-                </thead>
+                </THead>
                 <tbody>
                   {plan.steps.map((step: PlannedStep, idx: number) => (
-                    <tr
+                    <TRow
                       key={idx}
-                      style={{
-                        borderBottom: "1px solid var(--border-color)",
-                      }}
                       className="cursor-pointer"
                       onClick={() => toggleStep(idx)}
                     >
-                      <td className="px-4 py-3">
-                        {step.selected ? (
-                          <CheckSquare
-                            size={16}
-                            style={{ color: "var(--accent)" }}
-                          />
-                        ) : (
-                          <Square
-                            size={16}
-                            style={{ color: "var(--text-muted)" }}
-                          />
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className="text-sm"
-                          style={{ color: "var(--text-primary)" }}
-                        >
-                          {step.src_path.split(/[/\\]/).pop()}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className="text-xs"
-                          style={{ color: "var(--text-secondary)" }}
-                        >
-                          {step.rule_name || "—"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-center">
+                      <Td>
+                        <input
+                          type="checkbox"
+                          checked={!!step.selected}
+                          onChange={() => toggleStep(idx)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="h-4 w-4 cursor-pointer accent-[var(--accent)]"
+                        />
+                      </Td>
+                      <Td>{step.src_path.split(/[/\\]/).pop()}</Td>
+                      <Td className="text-fg-muted">{step.rule_name || "—"}</Td>
+                      <Td className="text-center">
                         <StatusBadge status={step.action_type} size="sm" />
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className="text-xs font-mono"
-                          style={{ color: "var(--text-secondary)" }}
-                        >
-                          {step.dst_path ?? "—"}
-                        </span>
-                      </td>
-                    </tr>
+                      </Td>
+                      <Td className="font-mono text-xs text-fg-muted">
+                        {step.dst_path ?? "—"}
+                      </Td>
+                    </TRow>
                   ))}
                 </tbody>
-              </table>
-            </div>
+              </Table>
+            </Card>
           )}
 
-          {/* Apply button */}
           {plan.steps.length > 0 && (
-            <div className="flex justify-end">
-              <button
-                onClick={handleApply}
+            <div className="sticky bottom-4 flex items-center justify-end gap-4 rounded-xl border border-border bg-surface px-5 py-4 shadow-pop">
+              <span className="text-sm text-fg-muted">
+                {selectedCount} file{selectedCount !== 1 ? "s" : ""} selected
+              </span>
+              <Button
+                variant="primary"
                 disabled={applying || selectedCount === 0}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-50"
-                style={{ backgroundColor: "var(--success)" }}
-                onMouseEnter={(e) =>
-                  (e.currentTarget.style.opacity = "0.9")
-                }
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.opacity = "1")
-                }
+                loading={applying}
+                icon={<Play size={16} />}
+                onClick={handleApply}
               >
-                {applying ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  <Play size={16} />
-                )}
-                {applying
-                  ? "Applying..."
-                  : `Apply (${selectedCount} file${selectedCount !== 1 ? "s" : ""})`}
-              </button>
+                {applying ? "Applying..." : `Apply (${selectedCount})`}
+              </Button>
             </div>
           )}
-        </>
+        </div>
       )}
 
       {!plan && !scanning && (
-        <div
-          className="rounded-xl"
-          style={{
-            backgroundColor: "var(--bg-primary)",
-            border: "1px solid var(--border-color)",
-          }}
-        >
+        <Card>
           <EmptyState
             icon={Eye}
             title="No preview yet"
             description="Select a folder and click Scan to see what would be organized."
           />
-        </div>
+        </Card>
       )}
     </div>
   );

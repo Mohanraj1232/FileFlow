@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Plus, X, FlaskConical, Save, ArrowLeft } from "lucide-react";
+import { Plus, X, FlaskConical, Save, ArrowLeft, FolderOpen } from "lucide-react";
 import type {
   Rule,
   RuleAction,
@@ -11,6 +11,10 @@ import type {
   ConflictPolicy,
 } from "../../lib/types";
 import { createRule, updateRule, getRules, testRule } from "../../lib/commands";
+import Button from "../../components/ui/Button";
+import PageHeader from "../../components/ui/PageHeader";
+import { Card, CardHeader, CardBody } from "../../components/ui/Card";
+import { Label, Input, Select } from "../../components/ui/Field";
 
 const FIELD_OPTIONS = [
   { value: "extension", label: "File Extension" },
@@ -74,10 +78,6 @@ interface ActionRow {
 
 let nextCondId = 1;
 let nextActionId = 1;
-
-function inputClass(): string {
-  return "w-full px-3 py-2 rounded-lg text-sm outline-none transition-colors";
-}
 
 export default function RuleBuilder() {
   const { id } = useParams();
@@ -316,514 +316,347 @@ export default function RuleBuilder() {
   }
 
   return (
-    <div className="space-y-6 max-w-3xl">
-      <div className="flex items-center gap-3">
-        <button
-          onClick={() => navigate("/rules")}
-          className="p-2 rounded-lg cursor-pointer"
-          style={{ color: "var(--text-secondary)" }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-primary)")}
-          onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-secondary)")}
-        >
-          <ArrowLeft size={20} />
-        </button>
-        <div>
-          <h1 className="text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
-            {isEditing ? "Edit Rule" : "New Rule"}
-          </h1>
-          <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>
-            {isEditing
-              ? "Modify this rule's conditions and actions"
-              : "Define conditions and actions for automatic file organization"}
-          </p>
-        </div>
-      </div>
-
-      {error && (
-        <div
-          className="px-4 py-3 rounded-lg text-sm"
-          style={{
-            backgroundColor: "var(--danger-light)",
-            color: "var(--danger)",
-            border: "1px solid var(--danger)",
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      {/* Name & Trigger */}
-      <div
-        className="rounded-xl p-6 space-y-4"
-        style={{
-          backgroundColor: "var(--bg-primary)",
-          border: "1px solid var(--border-color)",
-          boxShadow: "var(--shadow-sm)",
-        }}
-      >
-        <div>
-          <label
-            className="block text-xs font-medium mb-1.5"
-            style={{ color: "var(--text-secondary)" }}
-          >
-            Rule Name
-          </label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g., Sort PDFs to Documents"
-            className={inputClass()}
-            style={{
-              backgroundColor: "var(--bg-secondary)",
-              color: "var(--text-primary)",
-              border: "1px solid var(--border-color)",
-            }}
+    <div>
+      <PageHeader
+        back={
+          <Button
+            variant="ghost"
+            size="md"
+            iconOnly
+            aria-label="Back to Rules"
+            icon={<ArrowLeft size={18} />}
+            onClick={() => navigate("/rules")}
           />
-        </div>
-        <div>
-          <label
-            className="block text-xs font-medium mb-1.5"
-            style={{ color: "var(--text-secondary)" }}
-          >
-            Trigger
-          </label>
-          <select
-            value={trigger}
-            onChange={(e) => setTrigger(e.target.value as TriggerType)}
-            className={inputClass() + " cursor-pointer"}
-            style={{
-              backgroundColor: "var(--bg-secondary)",
-              color: "var(--text-primary)",
-              border: "1px solid var(--border-color)",
-            }}
-          >
-            <option value="arrival">On file arrival</option>
-            <option value="scan">On scheduled scan</option>
-            <option value="both">Both</option>
-          </select>
-        </div>
-      </div>
+        }
+        title={isEditing ? "Edit Rule" : "New Rule"}
+        description={
+          isEditing
+            ? "Modify this rule's conditions and actions"
+            : "Define conditions and actions for automatic file organization"
+        }
+      />
 
-      {/* Conditions */}
-      <div
-        className="rounded-xl p-6"
-        style={{
-          backgroundColor: "var(--bg-primary)",
-          border: "1px solid var(--border-color)",
-          boxShadow: "var(--shadow-sm)",
-        }}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <h2
-            className="text-base font-semibold"
-            style={{ color: "var(--text-primary)" }}
-          >
-            Conditions
-          </h2>
-          <div className="flex items-center gap-2">
-            {conditions.length > 1 && (
-              <div
-                className="flex rounded-lg overflow-hidden text-xs"
-                style={{ border: "1px solid var(--border-color)" }}
-              >
-                <button
-                  onClick={() => setGroupType("all")}
-                  className="px-3 py-1 cursor-pointer font-medium"
-                  style={{
-                    backgroundColor:
-                      groupType === "all"
-                        ? "var(--accent)"
-                        : "var(--bg-secondary)",
-                    color:
-                      groupType === "all" ? "white" : "var(--text-secondary)",
-                  }}
-                >
-                  AND
-                </button>
-                <button
-                  onClick={() => setGroupType("any")}
-                  className="px-3 py-1 cursor-pointer font-medium"
-                  style={{
-                    backgroundColor:
-                      groupType === "any"
-                        ? "var(--accent)"
-                        : "var(--bg-secondary)",
-                    color:
-                      groupType === "any" ? "white" : "var(--text-secondary)",
-                  }}
-                >
-                  OR
-                </button>
-              </div>
-            )}
+      <div className="space-y-4 max-w-3xl">
+        {error && (
+          <div className="rounded-lg border border-danger bg-danger-soft px-4 py-3 text-sm text-danger">
+            {error}
           </div>
-        </div>
+        )}
 
-        <div className="space-y-3">
-          {conditions.map((cond, idx) => {
-            const ops = OPS_BY_FIELD[cond.field] ?? [];
-            const showKindSelect =
-              cond.field === "kind" && (cond.op === "is" || cond.op === "in");
+        <Card>
+          <CardBody className="space-y-4">
+            <div>
+              <Label>Rule Name</Label>
+              <Input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g., Sort PDFs to Documents"
+              />
+            </div>
+            <div>
+              <Label>Trigger</Label>
+              <Select
+                value={trigger}
+                onChange={(e) => setTrigger(e.target.value as TriggerType)}
+                className="max-w-xs"
+              >
+                <option value="arrival">On file arrival</option>
+                <option value="scan">On scheduled scan</option>
+                <option value="both">Both</option>
+              </Select>
+            </div>
+          </CardBody>
+        </Card>
 
-            return (
-              <div key={cond.id}>
-                {idx > 0 && (
-                  <div
-                    className="text-xs font-medium text-center py-1"
-                    style={{ color: "var(--text-muted)" }}
+        <Card>
+          <CardHeader
+            title="Conditions"
+            actions={
+              conditions.length > 1 && (
+                <div className="inline-flex overflow-hidden rounded-md border border-border text-xs">
+                  <button
+                    onClick={() => setGroupType("all")}
+                    className={`cursor-pointer px-3 py-1 font-medium transition-colors ${
+                      groupType === "all"
+                        ? "bg-accent text-white"
+                        : "bg-inset text-fg-muted hover:text-fg"
+                    }`}
                   >
-                    {groupType === "all" ? "AND" : "OR"}
+                    AND
+                  </button>
+                  <button
+                    onClick={() => setGroupType("any")}
+                    className={`cursor-pointer px-3 py-1 font-medium transition-colors ${
+                      groupType === "any"
+                        ? "bg-accent text-white"
+                        : "bg-inset text-fg-muted hover:text-fg"
+                    }`}
+                  >
+                    OR
+                  </button>
+                </div>
+              )
+            }
+          />
+          <CardBody>
+            <div className="space-y-3">
+              {conditions.map((cond, idx) => {
+                const ops = OPS_BY_FIELD[cond.field] ?? [];
+                const showKindSelect =
+                  cond.field === "kind" && (cond.op === "is" || cond.op === "in");
+
+                return (
+                  <div key={cond.id}>
+                    {idx > 0 && (
+                      <div className="py-1 text-center text-xs font-medium text-fg-muted">
+                        {groupType === "all" ? "AND" : "OR"}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={cond.field}
+                        onChange={(e) =>
+                          updateCondition(cond.id, { field: e.target.value })
+                        }
+                        className="w-auto min-w-[140px]"
+                      >
+                        {FIELD_OPTIONS.map((f) => (
+                          <option key={f.value} value={f.value}>
+                            {f.label}
+                          </option>
+                        ))}
+                      </Select>
+
+                      <Select
+                        value={cond.op}
+                        onChange={(e) =>
+                          updateCondition(cond.id, {
+                            op: e.target.value as ConditionOp,
+                          })
+                        }
+                        className="w-auto min-w-[130px]"
+                      >
+                        {ops.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </Select>
+
+                      {showKindSelect ? (
+                        <Select
+                          value={cond.value}
+                          onChange={(e) =>
+                            updateCondition(cond.id, { value: e.target.value })
+                          }
+                          className="flex-1"
+                        >
+                          <option value="">Select kind...</option>
+                          {KIND_OPTIONS.map((k) => (
+                            <option key={k} value={k}>
+                              {k}
+                            </option>
+                          ))}
+                        </Select>
+                      ) : (
+                        <Input
+                          type={cond.field === "size" ? "number" : "text"}
+                          value={cond.value}
+                          onChange={(e) =>
+                            updateCondition(cond.id, { value: e.target.value })
+                          }
+                          placeholder={
+                            cond.field === "extension"
+                              ? "e.g., pdf or pdf, docx, txt"
+                              : cond.field === "size"
+                                ? "Size in bytes"
+                                : cond.field === "name"
+                                  ? "e.g., report"
+                                  : "Value"
+                          }
+                          className="flex-1"
+                        />
+                      )}
+
+                      {conditions.length > 1 && (
+                        <Button
+                          variant="ghostDanger"
+                          size="sm"
+                          iconOnly
+                          aria-label="Remove condition"
+                          icon={<X size={16} />}
+                          onClick={() => removeCondition(cond.id)}
+                        />
+                      )}
+                    </div>
                   </div>
-                )}
-                <div className="flex items-center gap-2">
-                  <select
-                    value={cond.field}
-                    onChange={(e) =>
-                      updateCondition(cond.id, { field: e.target.value })
-                    }
-                    className="px-3 py-2 rounded-lg text-sm cursor-pointer min-w-[140px]"
-                    style={{
-                      backgroundColor: "var(--bg-secondary)",
-                      color: "var(--text-primary)",
-                      border: "1px solid var(--border-color)",
-                    }}
-                  >
-                    {FIELD_OPTIONS.map((f) => (
-                      <option key={f.value} value={f.value}>
-                        {f.label}
-                      </option>
-                    ))}
-                  </select>
+                );
+              })}
+            </div>
 
-                  <select
-                    value={cond.op}
+            <Button
+              variant="soft"
+              size="sm"
+              className="mt-4"
+              icon={<Plus size={14} />}
+              onClick={addCondition}
+            >
+              Add Condition
+            </Button>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="Actions" />
+          <CardBody>
+            <div className="space-y-3">
+              {actions.map((act) => (
+                <div key={act.id} className="flex items-start gap-2">
+                  <Select
+                    value={act.action_type}
                     onChange={(e) =>
-                      updateCondition(cond.id, {
-                        op: e.target.value as ConditionOp,
+                      updateAction(act.id, {
+                        action_type: e.target.value as ActionType,
                       })
                     }
-                    className="px-3 py-2 rounded-lg text-sm cursor-pointer min-w-[130px]"
-                    style={{
-                      backgroundColor: "var(--bg-secondary)",
-                      color: "var(--text-primary)",
-                      border: "1px solid var(--border-color)",
-                    }}
+                    className="w-auto min-w-[120px]"
                   >
-                    {ops.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
+                    <option value="move">Move</option>
+                    <option value="copy">Copy</option>
+                    <option value="rename">Rename</option>
+                    <option value="trash">Trash</option>
+                    <option value="ignore">Ignore</option>
+                  </Select>
 
-                  {showKindSelect ? (
-                    <select
-                      value={cond.value}
+                  {(act.action_type === "move" || act.action_type === "copy") && (
+                    <div className="flex flex-1 gap-2">
+                      <Input
+                        type="text"
+                        value={act.destination}
+                        onChange={(e) =>
+                          updateAction(act.id, { destination: e.target.value })
+                        }
+                        placeholder="Destination folder (e.g., Documents/{kind})"
+                        className="flex-1"
+                      />
+                      <Button
+                        variant="secondary"
+                        icon={<FolderOpen size={14} />}
+                        onClick={() => handlePickFolder(act.id)}
+                        className="whitespace-nowrap"
+                      >
+                        Browse
+                      </Button>
+                    </div>
+                  )}
+
+                  {act.action_type === "rename" && (
+                    <Input
+                      type="text"
+                      value={act.pattern}
                       onChange={(e) =>
-                        updateCondition(cond.id, { value: e.target.value })
+                        updateAction(act.id, { pattern: e.target.value })
                       }
-                      className="flex-1 px-3 py-2 rounded-lg text-sm cursor-pointer"
-                      style={{
-                        backgroundColor: "var(--bg-secondary)",
-                        color: "var(--text-primary)",
-                        border: "1px solid var(--border-color)",
-                      }}
-                    >
-                      <option value="">Select kind...</option>
-                      {KIND_OPTIONS.map((k) => (
-                        <option key={k} value={k}>
-                          {k}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type={cond.field === "size" ? "number" : "text"}
-                      value={cond.value}
-                      onChange={(e) =>
-                        updateCondition(cond.id, { value: e.target.value })
-                      }
-                      placeholder={
-                        cond.field === "extension"
-                          ? "e.g., pdf or pdf, docx, txt"
-                          : cond.field === "size"
-                            ? "Size in bytes"
-                            : cond.field === "name"
-                              ? "e.g., report"
-                              : "Value"
-                      }
-                      className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
-                      style={{
-                        backgroundColor: "var(--bg-secondary)",
-                        color: "var(--text-primary)",
-                        border: "1px solid var(--border-color)",
-                      }}
+                      placeholder="Pattern (e.g., {date}_{name:clean}.{ext})"
+                      className="flex-1"
                     />
                   )}
 
-                  {conditions.length > 1 && (
-                    <button
-                      onClick={() => removeCondition(cond.id)}
-                      className="p-2 rounded-md cursor-pointer"
-                      style={{ color: "var(--text-muted)" }}
-                      onMouseEnter={(e) =>
-                        (e.currentTarget.style.color = "var(--danger)")
-                      }
-                      onMouseLeave={(e) =>
-                        (e.currentTarget.style.color = "var(--text-muted)")
-                      }
-                    >
-                      <X size={16} />
-                    </button>
+                  {(act.action_type === "trash" || act.action_type === "ignore") && (
+                    <div className="flex-1 px-3 py-2 text-sm text-fg-muted">
+                      {act.action_type === "trash"
+                        ? "Move to system recycle bin"
+                        : "Skip this file (stop matching further rules)"}
+                    </div>
+                  )}
+
+                  {actions.length > 1 && (
+                    <Button
+                      variant="ghostDanger"
+                      size="sm"
+                      iconOnly
+                      aria-label="Remove action"
+                      icon={<X size={16} />}
+                      onClick={() => removeAction(act.id)}
+                      className="mt-0.5"
+                    />
                   )}
                 </div>
-              </div>
-            );
-          })}
-        </div>
-
-        <button
-          onClick={addCondition}
-          className="flex items-center gap-1.5 mt-4 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
-          style={{
-            color: "var(--accent)",
-            backgroundColor: "var(--accent-light)",
-          }}
-        >
-          <Plus size={14} />
-          Add Condition
-        </button>
-      </div>
-
-      {/* Actions */}
-      <div
-        className="rounded-xl p-6"
-        style={{
-          backgroundColor: "var(--bg-primary)",
-          border: "1px solid var(--border-color)",
-          boxShadow: "var(--shadow-sm)",
-        }}
-      >
-        <h2
-          className="text-base font-semibold mb-4"
-          style={{ color: "var(--text-primary)" }}
-        >
-          Actions
-        </h2>
-
-        <div className="space-y-3">
-          {actions.map((act) => (
-            <div key={act.id} className="flex items-start gap-2">
-              <select
-                value={act.action_type}
-                onChange={(e) =>
-                  updateAction(act.id, {
-                    action_type: e.target.value as ActionType,
-                  })
-                }
-                className="px-3 py-2 rounded-lg text-sm cursor-pointer min-w-[120px]"
-                style={{
-                  backgroundColor: "var(--bg-secondary)",
-                  color: "var(--text-primary)",
-                  border: "1px solid var(--border-color)",
-                }}
-              >
-                <option value="move">Move</option>
-                <option value="copy">Copy</option>
-                <option value="rename">Rename</option>
-                <option value="trash">Trash</option>
-                <option value="ignore">Ignore</option>
-              </select>
-
-              {(act.action_type === "move" || act.action_type === "copy") && (
-                <div className="flex-1 flex gap-2">
-                  <input
-                    type="text"
-                    value={act.destination}
-                    onChange={(e) =>
-                      updateAction(act.id, { destination: e.target.value })
-                    }
-                    placeholder="Destination folder (e.g., Documents/{kind})"
-                    className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
-                    style={{
-                      backgroundColor: "var(--bg-secondary)",
-                      color: "var(--text-primary)",
-                      border: "1px solid var(--border-color)",
-                    }}
-                  />
-                  <button
-                    onClick={() => handlePickFolder(act.id)}
-                    className="px-3 py-2 rounded-lg text-xs font-medium cursor-pointer whitespace-nowrap"
-                    style={{
-                      backgroundColor: "var(--bg-tertiary)",
-                      color: "var(--text-secondary)",
-                      border: "1px solid var(--border-color)",
-                    }}
-                  >
-                    Browse
-                  </button>
-                </div>
-              )}
-
-              {act.action_type === "rename" && (
-                <input
-                  type="text"
-                  value={act.pattern}
-                  onChange={(e) =>
-                    updateAction(act.id, { pattern: e.target.value })
-                  }
-                  placeholder="Pattern (e.g., {date}_{name:clean}.{ext})"
-                  className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
-                  style={{
-                    backgroundColor: "var(--bg-secondary)",
-                    color: "var(--text-primary)",
-                    border: "1px solid var(--border-color)",
-                  }}
-                />
-              )}
-
-              {(act.action_type === "trash" || act.action_type === "ignore") && (
-                <div
-                  className="flex-1 px-3 py-2 rounded-lg text-sm"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  {act.action_type === "trash"
-                    ? "Move to system recycle bin"
-                    : "Skip this file (stop matching further rules)"}
-                </div>
-              )}
-
-              {actions.length > 1 && (
-                <button
-                  onClick={() => removeAction(act.id)}
-                  className="p-2 rounded-md cursor-pointer mt-0.5"
-                  style={{ color: "var(--text-muted)" }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.color = "var(--danger)")
-                  }
-                  onMouseLeave={(e) =>
-                    (e.currentTarget.style.color = "var(--text-muted)")
-                  }
-                >
-                  <X size={16} />
-                </button>
-              )}
+              ))}
             </div>
-          ))}
-        </div>
 
-        <button
-          onClick={addAction}
-          className="flex items-center gap-1.5 mt-4 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
-          style={{
-            color: "var(--accent)",
-            backgroundColor: "var(--accent-light)",
-          }}
-        >
-          <Plus size={14} />
-          Add Action
-        </button>
-      </div>
+            <Button
+              variant="soft"
+              size="sm"
+              className="mt-4"
+              icon={<Plus size={14} />}
+              onClick={addAction}
+            >
+              Add Action
+            </Button>
+          </CardBody>
+        </Card>
 
-      {/* Live Test */}
-      <div
-        className="rounded-xl p-6"
-        style={{
-          backgroundColor: "var(--bg-primary)",
-          border: "1px solid var(--border-color)",
-          boxShadow: "var(--shadow-sm)",
-        }}
-      >
-        <h2
-          className="text-base font-semibold mb-3"
-          style={{ color: "var(--text-primary)" }}
-        >
-          Test Rule
-        </h2>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={testFilename}
-            onChange={(e) => {
-              setTestFilename(e.target.value);
-              setTestResult(null);
-            }}
-            placeholder="Enter a filename to test (e.g., report.pdf)"
-            className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
-            style={{
-              backgroundColor: "var(--bg-secondary)",
-              color: "var(--text-primary)",
-              border: "1px solid var(--border-color)",
-            }}
-            onKeyDown={(e) => e.key === "Enter" && handleTest()}
-          />
-          <button
-            onClick={handleTest}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer"
-            style={{
-              backgroundColor: "var(--bg-tertiary)",
-              color: "var(--text-primary)",
-              border: "1px solid var(--border-color)",
-            }}
-          >
-            <FlaskConical size={14} />
-            Test
-          </button>
-        </div>
-        {testResult && (
-          <div
-            className="mt-3 px-4 py-3 rounded-lg text-sm"
-            style={{
-              backgroundColor: testResult.matched
-                ? "var(--success-light)"
-                : "var(--bg-tertiary)",
-              color: testResult.matched
-                ? "var(--success)"
-                : "var(--text-muted)",
-            }}
-          >
-            {testResult.matched ? (
-              <>
-                <strong>Match!</strong>
-                {testResult.destination && (
-                  <> — would move to <code>{testResult.destination}</code></>
+        <Card>
+          <CardHeader title="Test Rule" />
+          <CardBody>
+            <div className="flex gap-2">
+              <Input
+                type="text"
+                value={testFilename}
+                onChange={(e) => {
+                  setTestFilename(e.target.value);
+                  setTestResult(null);
+                }}
+                placeholder="Enter a filename to test (e.g., report.pdf)"
+                className="flex-1"
+                onKeyDown={(e) => e.key === "Enter" && handleTest()}
+              />
+              <Button
+                variant="secondary"
+                icon={<FlaskConical size={14} />}
+                onClick={handleTest}
+              >
+                Test
+              </Button>
+            </div>
+            {testResult && (
+              <div
+                className={`mt-3 rounded-lg px-4 py-3 text-sm ${
+                  testResult.matched
+                    ? "bg-success-soft text-success"
+                    : "bg-inset text-fg-muted"
+                }`}
+              >
+                {testResult.matched ? (
+                  <>
+                    <strong>Match!</strong>
+                    {testResult.destination && (
+                      <> — would move to <code>{testResult.destination}</code></>
+                    )}
+                  </>
+                ) : (
+                  "No match — this file would not be affected by this rule."
                 )}
-              </>
-            ) : (
-              "No match — this file would not be affected by this rule."
+              </div>
             )}
-          </div>
-        )}
-      </div>
+          </CardBody>
+        </Card>
 
-      {/* Save */}
-      <div className="flex items-center justify-end gap-3 pb-8">
-        <button
-          onClick={() => navigate("/rules")}
-          className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer"
-          style={{
-            backgroundColor: "var(--bg-tertiary)",
-            color: "var(--text-primary)",
-          }}
-        >
-          Cancel
-        </button>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-50"
-          style={{ backgroundColor: "var(--accent)" }}
-          onMouseEnter={(e) =>
-            (e.currentTarget.style.backgroundColor = "var(--accent-hover)")
-          }
-          onMouseLeave={(e) =>
-            (e.currentTarget.style.backgroundColor = "var(--accent)")
-          }
-        >
-          <Save size={16} />
-          {saving ? "Saving..." : isEditing ? "Update Rule" : "Create Rule"}
-        </button>
+        <div className="sticky bottom-4 flex justify-end gap-3 rounded-xl border border-border bg-surface px-5 py-4 shadow-pop">
+          <Button variant="secondary" onClick={() => navigate("/rules")}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            loading={saving}
+            icon={<Save size={16} />}
+            onClick={handleSave}
+          >
+            {saving ? "Saving..." : isEditing ? "Update Rule" : "Create Rule"}
+          </Button>
+        </div>
       </div>
     </div>
   );

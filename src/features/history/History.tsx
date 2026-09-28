@@ -1,11 +1,5 @@
 import { useState, useEffect } from "react";
-import {
-  Clock,
-  ChevronDown,
-  ChevronRight,
-  Undo2,
-  Loader2,
-} from "lucide-react";
+import { Clock, ChevronDown, ChevronRight, Undo2 } from "lucide-react";
 import type { Operation, OperationStep } from "../../lib/types";
 import {
   getOperations,
@@ -15,6 +9,12 @@ import {
 } from "../../lib/commands";
 import StatusBadge from "../../components/StatusBadge";
 import EmptyState from "../../components/EmptyState";
+import Button from "../../components/ui/Button";
+import PageHeader from "../../components/ui/PageHeader";
+import { Card } from "../../components/ui/Card";
+import { Table, THead, Th, TRow, Td } from "../../components/ui/Table";
+import { LoadingState } from "../../components/ui/Spinner";
+import { useToast } from "../../components/Toast";
 
 function groupByDay(ops: Operation[]): Map<string, Operation[]> {
   const groups = new Map<string, Operation[]>();
@@ -40,15 +40,12 @@ function formatTime(iso: string): string {
 }
 
 export default function History() {
+  const { addToast } = useToast();
   const [operations, setOperations] = useState<Operation[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedOps, setExpandedOps] = useState<Set<number>>(new Set());
   const [steps, setSteps] = useState<Map<number, OperationStep[]>>(new Map());
   const [undoing, setUndoing] = useState<number | null>(null);
-  const [message, setMessage] = useState<{
-    type: "success" | "error";
-    text: string;
-  } | null>(null);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
 
@@ -95,23 +92,22 @@ export default function History() {
 
   async function handleUndoOperation(opId: number) {
     setUndoing(opId);
-    setMessage(null);
     try {
       const result = await undoOperation(opId);
       if (result.success) {
-        setMessage({
+        addToast({
           type: "success",
           text: `Undone: ${result.steps_undone} step(s) reverted${result.steps_skipped > 0 ? `, ${result.steps_skipped} skipped` : ""}.`,
         });
       } else {
-        setMessage({
+        addToast({
           type: "error",
           text: result.errors.join("; ") || "Undo failed.",
         });
       }
       loadOperations(0, false);
     } catch (e) {
-      setMessage({ type: "error", text: String(e) });
+      addToast({ type: "error", text: String(e) });
     } finally {
       setUndoing(null);
     }
@@ -119,20 +115,19 @@ export default function History() {
 
   async function handleUndoStep(stepId: number) {
     setUndoing(stepId);
-    setMessage(null);
     try {
       const result = await undoStep(stepId);
       if (result.success) {
-        setMessage({ type: "success", text: "Step undone successfully." });
+        addToast({ type: "success", text: "Step undone successfully." });
       } else {
-        setMessage({
+        addToast({
           type: "error",
           text: result.errors.join("; ") || "Undo failed.",
         });
       }
       loadOperations(0, false);
     } catch (e) {
-      setMessage({ type: "error", text: String(e) });
+      addToast({ type: "error", text: String(e) });
     } finally {
       setUndoing(null);
     }
@@ -146,69 +141,28 @@ export default function History() {
 
   const grouped = groupByDay(operations);
 
-  if (loading && operations.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div
-          className="w-8 h-8 border-3 border-t-transparent rounded-full animate-spin"
-          style={{ borderColor: "var(--accent)", borderTopColor: "transparent" }}
-        />
-      </div>
-    );
-  }
+  if (loading && operations.length === 0) return <LoadingState />;
 
   return (
-    <div className="space-y-6 max-w-5xl">
-      <div>
-        <h1
-          className="text-2xl font-bold"
-          style={{ color: "var(--text-primary)" }}
-        >
-          History
-        </h1>
-        <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
-          View past operations and undo changes
-        </p>
-      </div>
-
-      {message && (
-        <div
-          className="px-4 py-3 rounded-lg text-sm"
-          style={{
-            backgroundColor:
-              message.type === "success"
-                ? "var(--success-light)"
-                : "var(--danger-light)",
-            color:
-              message.type === "success" ? "var(--success)" : "var(--danger)",
-          }}
-        >
-          {message.text}
-        </div>
-      )}
+    <div>
+      <PageHeader
+        title="History"
+        description="View past operations and undo changes"
+      />
 
       {operations.length === 0 ? (
-        <div
-          className="rounded-xl"
-          style={{
-            backgroundColor: "var(--bg-primary)",
-            border: "1px solid var(--border-color)",
-          }}
-        >
+        <Card>
           <EmptyState
             icon={Clock}
             title="No history yet"
             description="Operations will appear here once files are organized."
           />
-        </div>
+        </Card>
       ) : (
         <div className="space-y-6">
           {Array.from(grouped.entries()).map(([day, ops]) => (
             <div key={day}>
-              <h3
-                className="text-xs font-semibold uppercase tracking-wider mb-3"
-                style={{ color: "var(--text-muted)" }}
-              >
+              <h3 className="sticky top-0 z-[1] -mx-1 mb-3 bg-canvas px-1 py-1 text-xs font-semibold uppercase tracking-wider text-fg-muted">
                 {day}
               </h3>
               <div className="space-y-2">
@@ -217,184 +171,106 @@ export default function History() {
                   const opSteps = steps.get(op.id) ?? [];
 
                   return (
-                    <div
-                      key={op.id}
-                      className="rounded-xl overflow-hidden"
-                      style={{
-                        backgroundColor: "var(--bg-primary)",
-                        border: "1px solid var(--border-color)",
-                        boxShadow: "var(--shadow-sm)",
-                      }}
-                    >
-                      {/* Operation header */}
+                    <Card key={op.id} className="overflow-hidden">
                       <div
-                        className="flex items-center justify-between px-5 py-4 cursor-pointer"
+                        className="flex cursor-pointer items-center justify-between px-5 py-4"
                         onClick={() => toggleExpand(op.id)}
                       >
                         <div className="flex items-center gap-3">
                           {isExpanded ? (
-                            <ChevronDown
-                              size={16}
-                              style={{ color: "var(--text-muted)" }}
-                            />
+                            <ChevronDown size={16} className="text-fg-muted" />
                           ) : (
-                            <ChevronRight
-                              size={16}
-                              style={{ color: "var(--text-muted)" }}
-                            />
+                            <ChevronRight size={16} className="text-fg-muted" />
                           )}
-                          <span
-                            className="text-sm font-medium"
-                            style={{ color: "var(--text-primary)" }}
-                          >
+                          <span className="text-sm font-medium text-fg">
                             {op.summary ?? `Operation #${op.id}`}
                           </span>
                           <StatusBadge status={op.status} size="sm" />
                         </div>
                         <div className="flex items-center gap-3">
-                          <span
-                            className="text-xs"
-                            style={{ color: "var(--text-muted)" }}
-                          >
+                          <span className="text-xs text-fg-muted">
                             {formatTime(op.started_at)}
                           </span>
                           {(op.status === "done" ||
                             op.status === "partially_undone") && (
-                            <button
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              disabled={undoing !== null}
+                              loading={undoing === op.id}
+                              icon={<Undo2 size={12} />}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleUndoOperation(op.id);
                               }}
-                              disabled={undoing !== null}
-                              className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer disabled:opacity-50"
-                              style={{
-                                color: "var(--warning)",
-                                backgroundColor: "var(--warning-light)",
-                              }}
                             >
-                              {undoing === op.id ? (
-                                <Loader2 size={12} className="animate-spin" />
-                              ) : (
-                                <Undo2 size={12} />
-                              )}
                               {op.status === "partially_undone" ? "Retry" : "Undo"}
-                            </button>
+                            </Button>
                           )}
                         </div>
                       </div>
 
-                      {/* Expanded steps */}
                       {isExpanded && (
-                        <div
-                          className="px-5 pb-4"
-                          style={{
-                            borderTop: "1px solid var(--border-color)",
-                          }}
-                        >
+                        <div className="border-t border-border-muted px-5 pb-2">
                           {opSteps.length === 0 ? (
-                            <p
-                              className="text-xs py-3"
-                              style={{ color: "var(--text-muted)" }}
-                            >
+                            <p className="py-3 text-xs text-fg-muted">
                               Loading steps...
                             </p>
                           ) : (
-                            <table className="w-full mt-3">
-                              <thead>
+                            <Table>
+                              <THead>
                                 <tr>
-                                  <th
-                                    className="text-left text-[10px] font-medium uppercase tracking-wider pb-2"
-                                    style={{ color: "var(--text-muted)" }}
-                                  >
-                                    Source
-                                  </th>
-                                  <th
-                                    className="text-left text-[10px] font-medium uppercase tracking-wider pb-2 px-2"
-                                    style={{ color: "var(--text-muted)" }}
-                                  >
-                                    Action
-                                  </th>
-                                  <th
-                                    className="text-left text-[10px] font-medium uppercase tracking-wider pb-2"
-                                    style={{ color: "var(--text-muted)" }}
-                                  >
-                                    Destination
-                                  </th>
-                                  <th
-                                    className="text-center text-[10px] font-medium uppercase tracking-wider pb-2"
-                                    style={{ color: "var(--text-muted)" }}
-                                  >
-                                    Status
-                                  </th>
-                                  <th className="w-16 pb-2" />
+                                  <Th>Source</Th>
+                                  <Th>Action</Th>
+                                  <Th>Destination</Th>
+                                  <Th className="text-center">Status</Th>
+                                  <Th className="w-16" />
                                 </tr>
-                              </thead>
+                              </THead>
                               <tbody>
                                 {opSteps.map((step) => (
-                                  <tr
-                                    key={step.id}
-                                    style={{
-                                      borderTop:
-                                        "1px solid var(--border-color)",
-                                    }}
-                                  >
-                                    <td
-                                      className="py-2 text-xs font-mono truncate max-w-[200px]"
-                                      style={{
-                                        color: "var(--text-primary)",
-                                      }}
+                                  <TRow key={step.id}>
+                                    <Td
+                                      className="max-w-[200px] truncate font-mono text-xs"
                                       title={step.src_path}
                                     >
                                       {step.src_path.split(/[/\\]/).pop()}
-                                    </td>
-                                    <td className="py-2 px-2">
-                                      <StatusBadge
-                                        status={step.action_type}
-                                        size="sm"
-                                      />
-                                    </td>
-                                    <td
-                                      className="py-2 text-xs font-mono truncate max-w-[200px]"
-                                      style={{
-                                        color: "var(--text-secondary)",
-                                      }}
+                                    </Td>
+                                    <Td>
+                                      <StatusBadge status={step.action_type} size="sm" />
+                                    </Td>
+                                    <Td
+                                      className="max-w-[200px] truncate font-mono text-xs text-fg-muted"
                                       title={step.dst_path ?? ""}
                                     >
                                       {step.dst_path
                                         ? step.dst_path.split(/[/\\]/).pop()
                                         : "—"}
-                                    </td>
-                                    <td className="py-2 text-center">
-                                      <StatusBadge
-                                        status={step.status}
-                                        size="sm"
-                                      />
-                                    </td>
-                                    <td className="py-2 text-right">
+                                    </Td>
+                                    <Td className="text-center">
+                                      <StatusBadge status={step.status} size="sm" />
+                                    </Td>
+                                    <Td className="text-right">
                                       {step.status === "done" && (
-                                        <button
-                                          onClick={() =>
-                                            handleUndoStep(step.id)
-                                          }
+                                        <Button
+                                          variant="ghostDanger"
+                                          size="sm"
+                                          iconOnly
+                                          aria-label="Undo this step"
                                           disabled={undoing !== null}
-                                          className="p-1 rounded cursor-pointer disabled:opacity-50"
-                                          style={{
-                                            color: "var(--warning)",
-                                          }}
-                                          title="Undo this step"
-                                        >
-                                          <Undo2 size={12} />
-                                        </button>
+                                          icon={<Undo2 size={12} />}
+                                          onClick={() => handleUndoStep(step.id)}
+                                        />
                                       )}
-                                    </td>
-                                  </tr>
+                                    </Td>
+                                  </TRow>
                                 ))}
                               </tbody>
-                            </table>
+                            </Table>
                           )}
                         </div>
                       )}
-                    </div>
+                    </Card>
                   );
                 })}
               </div>
@@ -403,17 +279,9 @@ export default function History() {
 
           {hasMore && (
             <div className="flex justify-center">
-              <button
-                onClick={loadMore}
-                disabled={loading}
-                className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer"
-                style={{
-                  backgroundColor: "var(--bg-tertiary)",
-                  color: "var(--text-secondary)",
-                }}
-              >
+              <Button variant="ghost" disabled={loading} onClick={loadMore}>
                 {loading ? "Loading..." : "Load More"}
-              </button>
+              </Button>
             </div>
           )}
         </div>

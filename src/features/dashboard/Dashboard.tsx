@@ -15,44 +15,27 @@ import {
   getWatchedFolders,
   addWatchedFolder,
   removeWatchedFolder,
+  toggleWatchedFolder,
 } from "../../lib/commands";
 import StatusBadge from "../../components/StatusBadge";
 import EmptyState from "../../components/EmptyState";
-import Button from "../../components/Button";
+import Button from "../../components/ui/Button";
+import PageHeader from "../../components/ui/PageHeader";
+import { Card, CardHeader, CardBody } from "../../components/ui/Card";
+import StatCard from "../../components/ui/StatCard";
+import { LoadingState } from "../../components/ui/Spinner";
+import Toggle from "../../components/Toggle";
 
-interface StatCardProps {
-  icon: React.ReactNode;
-  label: string;
-  value: number;
-  color: string;
-}
-
-function StatCard({ icon, label, value, color }: StatCardProps) {
-  return (
-    <div
-      className="rounded-xl p-5 flex items-center gap-4"
-      style={{
-        backgroundColor: "var(--bg-primary)",
-        border: "1px solid var(--border-color)",
-        boxShadow: "var(--shadow-sm)",
-      }}
-    >
-      <div
-        className="w-12 h-12 rounded-full flex items-center justify-center shrink-0"
-        style={{ backgroundColor: color + "1f", color }}
-      >
-        {icon}
-      </div>
-      <div>
-        <p className="text-3xl font-bold leading-tight" style={{ color: "var(--text-primary)" }}>
-          {value}
-        </p>
-        <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
-          {label}
-        </p>
-      </div>
-    </div>
-  );
+function formatRelativeTime(iso: string): string {
+  const diffSec = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (diffSec < 60) return "just now";
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay < 7) return `${diffDay}d ago`;
+  return new Date(iso).toLocaleDateString();
 }
 
 export default function Dashboard() {
@@ -103,183 +86,147 @@ export default function Dashboard() {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div
-          className="w-8 h-8 border-3 border-t-transparent rounded-full animate-spin"
-          style={{ borderColor: "var(--accent)", borderTopColor: "transparent" }}
-        />
-      </div>
+  async function handleToggleFolder(folder: WatchedFolder) {
+    setFolders((prev) =>
+      prev.map((f) => (f.id === folder.id ? { ...f, enabled: !f.enabled } : f)),
     );
+    try {
+      await toggleWatchedFolder(folder.id, !folder.enabled);
+    } catch {
+      loadData();
+    }
   }
 
-  return (
-    <div className="space-y-8 max-w-5xl">
-      <div>
-        <h1 className="text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
-          Dashboard
-        </h1>
-        <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
-          Overview of your file organization
-        </p>
-      </div>
+  if (loading) return <LoadingState />;
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  return (
+    <div>
+      <PageHeader
+        title="Dashboard"
+        description="Overview of your file organization"
+        actions={
+          <>
+            <Button
+              variant="secondary"
+              onClick={handleAddFolder}
+              icon={<FolderPlus size={14} />}
+            >
+              Add Folder
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => navigate("/preview")}
+              disabled={folders.length === 0}
+              icon={<Eye size={14} />}
+            >
+              Organize Now
+            </Button>
+          </>
+        }
+      />
+
+      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
         <StatCard
           icon={<FileCheck size={20} />}
           label="Organized today"
           value={stats?.files_organized_today ?? 0}
-          color="#3b82f6"
+          tone="accent"
         />
         <StatCard
           icon={<Activity size={20} />}
           label="This week"
           value={stats?.files_organized_week ?? 0}
-          color="#22c55e"
+          tone="success"
         />
         <StatCard
           icon={<ListFilter size={20} />}
           label="Active rules"
           value={stats?.active_rules ?? 0}
-          color="#f59e0b"
+          tone="warning"
         />
         <StatCard
           icon={<FolderOpen size={20} />}
           label="Watched folders"
           value={stats?.watched_folders ?? folders.length}
-          color="#8b5cf6"
+          tone="accent"
         />
       </div>
 
-      <div
-        className="rounded-xl p-6"
-        style={{
-          backgroundColor: "var(--bg-primary)",
-          border: "1px solid var(--border-color)",
-          boxShadow: "var(--shadow-sm)",
-        }}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <h2
-            className="text-base font-semibold"
-            style={{ color: "var(--text-primary)" }}
-          >
-            Watched Folders
-          </h2>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleAddFolder}
-            icon={<FolderPlus size={14} />}
-          >
-            Add Folder
-          </Button>
-        </div>
-        {folders.length === 0 ? (
-          <p className="text-sm py-4" style={{ color: "var(--text-muted)" }}>
-            No folders being watched. Add a folder to get started.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {folders.map((f) => (
-              <div
-                key={f.id}
-                className="flex items-center justify-between px-4 py-3 rounded-lg"
-                style={{ backgroundColor: "var(--bg-secondary)" }}
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <FolderOpen
-                    size={16}
-                    style={{ color: "var(--text-secondary)", flexShrink: 0 }}
-                  />
-                  <span
-                    className="text-sm truncate"
-                    style={{ color: "var(--text-primary)" }}
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-5">
+        <Card className="lg:col-span-2">
+          <CardHeader title="Watched Folders" />
+          <CardBody>
+            {folders.length === 0 ? (
+              <p className="py-2 text-sm text-fg-muted">
+                No folders being watched. Add a folder to get started.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {folders.map((f) => (
+                  <div
+                    key={f.id}
+                    className="flex items-center justify-between gap-3 rounded-lg bg-inset px-3 py-2.5"
                   >
-                    {f.path}
-                  </span>
-                  <StatusBadge status={f.enabled ? "done" : "skipped"} size="sm" />
-                </div>
-                <button
-                  onClick={() => handleRemoveFolder(f.id)}
-                  className="p-1.5 rounded-md cursor-pointer"
-                  style={{ color: "var(--text-muted)" }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.color = "var(--danger)")
-                  }
-                  onMouseLeave={(e) =>
-                    (e.currentTarget.style.color = "var(--text-muted)")
-                  }
-                  title="Remove folder"
-                >
-                  <Trash2 size={14} />
-                </button>
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <FolderOpen size={16} className="shrink-0 text-fg-muted" />
+                      <span className="truncate text-sm text-fg" title={f.path}>
+                        {f.path}
+                      </span>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Toggle
+                        checked={!!f.enabled}
+                        onChange={() => handleToggleFolder(f)}
+                      />
+                      <Button
+                        variant="ghostDanger"
+                        size="sm"
+                        iconOnly
+                        aria-label="Remove folder"
+                        icon={<Trash2 size={14} />}
+                        onClick={() => handleRemoveFolder(f.id)}
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            )}
+          </CardBody>
+        </Card>
 
-      <div
-        className="rounded-xl p-6"
-        style={{
-          backgroundColor: "var(--bg-primary)",
-          border: "1px solid var(--border-color)",
-          boxShadow: "var(--shadow-sm)",
-        }}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <h2
-            className="text-base font-semibold"
-            style={{ color: "var(--text-primary)" }}
-          >
-            Recent Activity
-          </h2>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => navigate("/preview")}
-            icon={<Eye size={14} />}
-          >
-            Organize Now
-          </Button>
-        </div>
-        {recentOps.length === 0 ? (
-          <EmptyState
-            icon={Activity}
-            title="No activity yet"
-            description="Operations will appear here once files are organized."
-            actionLabel={folders.length === 0 ? "Add a Folder to Start" : "Organize Now"}
-            onAction={folders.length === 0 ? handleAddFolder : () => navigate("/preview")}
-          />
-        ) : (
-          <div className="space-y-2">
-            {recentOps.map((op) => (
-              <div
-                key={op.id}
-                className="flex items-center justify-between px-4 py-3 rounded-lg"
-                style={{ backgroundColor: "var(--bg-secondary)" }}
-              >
-                <div className="flex items-center gap-3">
-                  <span
-                    className="text-sm"
-                    style={{ color: "var(--text-primary)" }}
-                  >
-                    {op.summary ?? `Operation #${op.id}`}
-                  </span>
-                  <StatusBadge status={op.status} size="sm" />
-                </div>
-                <span
-                  className="text-xs"
-                  style={{ color: "var(--text-muted)" }}
+        <Card className="flex flex-col lg:col-span-3">
+          <CardHeader title="Recent Activity" />
+          {recentOps.length === 0 ? (
+            <EmptyState
+              icon={Activity}
+              title="No activity yet"
+              description="Operations will appear here once files are organized."
+              actionLabel={
+                folders.length === 0 ? "Add a Folder to Start" : undefined
+              }
+              onAction={folders.length === 0 ? handleAddFolder : undefined}
+            />
+          ) : (
+            <CardBody className="space-y-2">
+              {recentOps.map((op) => (
+                <div
+                  key={op.id}
+                  className="flex items-center justify-between gap-3 rounded-lg bg-inset px-3 py-2.5"
                 >
-                  {new Date(op.started_at).toLocaleString()}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="truncate text-sm text-fg">
+                      {op.summary ?? `Operation #${op.id}`}
+                    </span>
+                    <StatusBadge status={op.status} size="sm" />
+                  </div>
+                  <span className="shrink-0 text-xs text-fg-muted">
+                    {formatRelativeTime(op.started_at)}
+                  </span>
+                </div>
+              ))}
+            </CardBody>
+          )}
+        </Card>
       </div>
     </div>
   );
