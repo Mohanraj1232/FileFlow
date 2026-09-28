@@ -18,6 +18,7 @@ import {
 } from "../../lib/commands";
 import StatusBadge from "../../components/StatusBadge";
 import EmptyState from "../../components/EmptyState";
+import Button from "../../components/Button";
 
 interface StatCardProps {
   icon: React.ReactNode;
@@ -37,13 +38,13 @@ function StatCard({ icon, label, value, color }: StatCardProps) {
       }}
     >
       <div
-        className="w-11 h-11 rounded-lg flex items-center justify-center"
-        style={{ backgroundColor: color + "18", color }}
+        className="w-12 h-12 rounded-full flex items-center justify-center shrink-0"
+        style={{ backgroundColor: color + "1f", color }}
       >
         {icon}
       </div>
       <div>
-        <p className="text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
+        <p className="text-3xl font-bold leading-tight" style={{ color: "var(--text-primary)" }}>
           {value}
         </p>
         <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
@@ -166,20 +167,14 @@ export default function Dashboard() {
           >
             Watched Folders
           </h2>
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={handleAddFolder}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium text-white cursor-pointer"
-            style={{ backgroundColor: "var(--accent)" }}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.backgroundColor = "var(--accent-hover)")
-            }
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.backgroundColor = "var(--accent)")
-            }
+            icon={<FolderPlus size={14} />}
           >
-            <FolderPlus size={14} />
             Add Folder
-          </button>
+          </Button>
         </div>
         {folders.length === 0 ? (
           <p className="text-sm py-4" style={{ color: "var(--text-muted)" }}>
@@ -241,26 +236,22 @@ export default function Dashboard() {
           >
             Recent Activity
           </h2>
-          <button
+          <Button
+            variant="primary"
+            size="sm"
             onClick={() => navigate("/preview")}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium text-white cursor-pointer"
-            style={{ backgroundColor: "var(--accent)" }}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.backgroundColor = "var(--accent-hover)")
-            }
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.backgroundColor = "var(--accent)")
-            }
+            icon={<Eye size={14} />}
           >
-            <Eye size={14} />
             Organize Now
-          </button>
+          </Button>
         </div>
         {recentOps.length === 0 ? (
           <EmptyState
             icon={Activity}
             title="No activity yet"
             description="Operations will appear here once files are organized."
+            actionLabel={folders.length === 0 ? "Add a Folder to Start" : "Organize Now"}
+            onAction={folders.length === 0 ? handleAddFolder : () => navigate("/preview")}
           />
         ) : (
           <div className="space-y-2">

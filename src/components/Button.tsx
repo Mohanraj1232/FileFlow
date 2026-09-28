@@ -3,9 +3,11 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+type ButtonSize = "sm" | "md";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
+  size?: ButtonSize;
   icon?: ReactNode;
   loading?: boolean;
   children?: ReactNode;
@@ -22,7 +24,7 @@ const VARIANT_STYLES: Record<
   },
   secondary: {
     bg: "var(--bg-tertiary)",
-    bgHover: "var(--bg-tertiary)",
+    bgHover: "var(--border-strong)",
     text: "var(--text-primary)",
   },
   ghost: {
@@ -37,12 +39,18 @@ const VARIANT_STYLES: Record<
   },
 };
 
+const SIZE_STYLES: Record<ButtonSize, string> = {
+  sm: "px-3 py-1.5 text-xs",
+  md: "px-4 py-2 text-sm",
+};
+
 /**
  * Shared button styled from the app's CSS-variable design system, so call
  * sites stop repeating the onMouseEnter/onMouseLeave hover-swap pattern.
  */
 export default function Button({
   variant = "secondary",
+  size = "md",
   icon,
   loading,
   disabled,
@@ -66,7 +74,7 @@ export default function Button({
         setHovered(false);
         rest.onMouseLeave?.(e);
       }}
-      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+      className={`flex items-center gap-2 rounded-lg font-medium cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${SIZE_STYLES[size]} ${className}`}
       style={{
         backgroundColor: hovered ? colors.bgHover : colors.bg,
         color: colors.text,

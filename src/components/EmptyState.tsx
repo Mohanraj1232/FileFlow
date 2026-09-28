@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import Button from "./Button";
 
 interface EmptyStateProps {
   icon: LucideIcon;
@@ -35,19 +36,9 @@ export default function EmptyState({
         {description}
       </p>
       {actionLabel && onAction && (
-        <button
-          onClick={onAction}
-          className="px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
-          style={{ backgroundColor: "var(--accent)" }}
-          onMouseEnter={(e) =>
-            (e.currentTarget.style.backgroundColor = "var(--accent-hover)")
-          }
-          onMouseLeave={(e) =>
-            (e.currentTarget.style.backgroundColor = "var(--accent)")
-          }
-        >
+        <Button variant="primary" onClick={onAction}>
           {actionLabel}
-        </button>
+        </Button>
       )}
     </div>
   );

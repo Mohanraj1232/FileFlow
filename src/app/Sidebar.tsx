@@ -62,7 +62,15 @@ export default function Sidebar() {
       style={{ backgroundColor: "var(--bg-sidebar)" }}
     >
       <div className="px-5 py-6 flex items-center gap-3">
-        <FileStack size={28} style={{ color: "var(--accent)" }} />
+        <div
+          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+          style={{
+            background: "linear-gradient(135deg, var(--accent), var(--accent-hover))",
+            boxShadow: "var(--shadow-md)",
+          }}
+        >
+          <FileStack size={20} color="white" />
+        </div>
         <div>
           <h1
             className="text-lg font-bold tracking-tight"
@@ -82,10 +90,13 @@ export default function Sidebar() {
             key={to}
             to={to}
             end={to === "/"}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors"
+            className="flex items-center gap-3 pl-[13px] pr-4 py-2.5 rounded-lg text-sm font-medium transition-colors"
             style={({ isActive }) => ({
               backgroundColor: isActive ? "var(--bg-sidebar-active)" : "transparent",
               color: isActive ? "var(--text-sidebar)" : "var(--text-sidebar-muted)",
+              borderLeft: isActive
+                ? "3px solid var(--accent)"
+                : "3px solid transparent",
             })}
             onMouseEnter={(e) => {
               if (!e.currentTarget.classList.contains("active"))
