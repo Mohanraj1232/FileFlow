@@ -444,40 +444,47 @@ export default function RuleBuilder() {
                         ))}
                       </Select>
 
-                      {showKindSelect ? (
-                        <Select
-                          value={cond.value}
-                          onChange={(e) =>
-                            updateCondition(cond.id, { value: e.target.value })
-                          }
-                          className="flex-1"
-                        >
-                          <option value="">Select kind...</option>
-                          {KIND_OPTIONS.map((k) => (
-                            <option key={k} value={k}>
-                              {k}
-                            </option>
-                          ))}
-                        </Select>
-                      ) : (
-                        <Input
-                          type={cond.field === "size" ? "number" : "text"}
-                          value={cond.value}
-                          onChange={(e) =>
-                            updateCondition(cond.id, { value: e.target.value })
-                          }
-                          placeholder={
-                            cond.field === "extension"
-                              ? "e.g., pdf or pdf, docx, txt"
-                              : cond.field === "size"
-                                ? "Size in bytes"
-                                : cond.field === "name"
-                                  ? "e.g., report"
-                                  : "Value"
-                          }
-                          className="flex-1"
-                        />
-                      )}
+                      {/* Wrapper claims the flex space; the control fills it with
+                          plain w-full. Chromium's flex algorithm gives form
+                          controls (input/select) special intrinsic-size handling
+                          that can ignore flex-basis:0% when flex-1 is applied
+                          directly to them, collapsing them to a tiny min-content
+                          box instead of growing — wrapping in a plain div sidesteps
+                          that entirely since divs don't have that special casing. */}
+                      <div className="min-w-0 flex-1">
+                        {showKindSelect ? (
+                          <Select
+                            value={cond.value}
+                            onChange={(e) =>
+                              updateCondition(cond.id, { value: e.target.value })
+                            }
+                          >
+                            <option value="">Select kind...</option>
+                            {KIND_OPTIONS.map((k) => (
+                              <option key={k} value={k}>
+                                {k}
+                              </option>
+                            ))}
+                          </Select>
+                        ) : (
+                          <Input
+                            type={cond.field === "size" ? "number" : "text"}
+                            value={cond.value}
+                            onChange={(e) =>
+                              updateCondition(cond.id, { value: e.target.value })
+                            }
+                            placeholder={
+                              cond.field === "extension"
+                                ? "e.g., pdf or pdf, docx, txt"
+                                : cond.field === "size"
+                                  ? "Size in bytes"
+                                  : cond.field === "name"
+                                    ? "e.g., report"
+                                    : "Value"
+                            }
+                          />
+                        )}
+                      </div>
 
                       {conditions.length > 1 && (
                         <Button
@@ -531,15 +538,16 @@ export default function RuleBuilder() {
 
                   {(act.action_type === "move" || act.action_type === "copy") && (
                     <div className="flex flex-1 gap-2">
-                      <Input
-                        type="text"
-                        value={act.destination}
-                        onChange={(e) =>
-                          updateAction(act.id, { destination: e.target.value })
-                        }
-                        placeholder="Destination folder (e.g., Documents/{kind})"
-                        className="flex-1"
-                      />
+                      <div className="min-w-0 flex-1">
+                        <Input
+                          type="text"
+                          value={act.destination}
+                          onChange={(e) =>
+                            updateAction(act.id, { destination: e.target.value })
+                          }
+                          placeholder="Destination folder (e.g., Documents/{kind})"
+                        />
+                      </div>
                       <Button
                         variant="secondary"
                         icon={<FolderOpen size={14} />}
@@ -552,15 +560,16 @@ export default function RuleBuilder() {
                   )}
 
                   {act.action_type === "rename" && (
-                    <Input
-                      type="text"
-                      value={act.pattern}
-                      onChange={(e) =>
-                        updateAction(act.id, { pattern: e.target.value })
-                      }
-                      placeholder="Pattern (e.g., {date}_{name:clean}.{ext})"
-                      className="flex-1"
-                    />
+                    <div className="min-w-0 flex-1">
+                      <Input
+                        type="text"
+                        value={act.pattern}
+                        onChange={(e) =>
+                          updateAction(act.id, { pattern: e.target.value })
+                        }
+                        placeholder="Pattern (e.g., {date}_{name:clean}.{ext})"
+                      />
+                    </div>
                   )}
 
                   {(act.action_type === "trash" || act.action_type === "ignore") && (
@@ -602,17 +611,18 @@ export default function RuleBuilder() {
           <CardHeader title="Test Rule" />
           <CardBody>
             <div className="flex gap-2">
-              <Input
-                type="text"
-                value={testFilename}
-                onChange={(e) => {
-                  setTestFilename(e.target.value);
-                  setTestResult(null);
-                }}
-                placeholder="Enter a filename to test (e.g., report.pdf)"
-                className="flex-1"
-                onKeyDown={(e) => e.key === "Enter" && handleTest()}
-              />
+              <div className="min-w-0 flex-1">
+                <Input
+                  type="text"
+                  value={testFilename}
+                  onChange={(e) => {
+                    setTestFilename(e.target.value);
+                    setTestResult(null);
+                  }}
+                  placeholder="Enter a filename to test (e.g., report.pdf)"
+                  onKeyDown={(e) => e.key === "Enter" && handleTest()}
+                />
+              </div>
               <Button
                 variant="secondary"
                 icon={<FlaskConical size={14} />}

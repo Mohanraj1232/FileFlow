@@ -211,14 +211,15 @@ export default function Settings() {
           />
           <CardBody>
             <div className="mb-3 flex gap-2">
-              <Input
-                type="text"
-                value={newPattern}
-                onChange={(e) => setNewPattern(e.target.value)}
-                placeholder="e.g., *.tmp, .DS_Store"
-                className="max-w-sm flex-1"
-                onKeyDown={(e) => e.key === "Enter" && addPattern()}
-              />
+              <div className="min-w-0 max-w-sm flex-1">
+                <Input
+                  type="text"
+                  value={newPattern}
+                  onChange={(e) => setNewPattern(e.target.value)}
+                  placeholder="e.g., *.tmp, .DS_Store"
+                  onKeyDown={(e) => e.key === "Enter" && addPattern()}
+                />
+              </div>
               <Button variant="secondary" icon={<Plus size={14} />} onClick={addPattern}>
                 Add
               </Button>
