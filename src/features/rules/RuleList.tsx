@@ -108,10 +108,10 @@ export default function RuleList() {
             <THead>
               <tr>
                 <Th className="w-8" />
-                <Th>Rule</Th>
+                <Th className="w-56">Rule</Th>
                 <Th>Conditions</Th>
-                <Th className="text-center">Priority</Th>
-                <Th className="text-center">Enabled</Th>
+                <Th className="w-20 text-center">Priority</Th>
+                <Th className="w-20 text-center">Enabled</Th>
                 <Th className="w-24" />
               </tr>
             </THead>
@@ -122,15 +122,22 @@ export default function RuleList() {
                     <GripVertical size={14} className="cursor-grab text-fg-subtle" />
                   </Td>
                   <Td>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-fg">{rule.name}</span>
-                      <Badge tone="neutral" size="sm">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="truncate font-medium text-fg" title={rule.name}>
+                        {rule.name}
+                      </span>
+                      <Badge tone="neutral" size="sm" className="shrink-0">
                         {rule.trigger}
                       </Badge>
                     </div>
                   </Td>
                   <Td className="text-fg-muted">
-                    <code className="text-xs">{summarizeCondition(rule.condition)}</code>
+                    <code
+                      className="block truncate text-xs"
+                      title={summarizeCondition(rule.condition)}
+                    >
+                      {summarizeCondition(rule.condition)}
+                    </code>
                   </Td>
                   <Td className="text-center font-mono text-xs text-fg-muted">
                     {rule.priority}

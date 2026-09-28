@@ -118,9 +118,9 @@ export default function Unsorted() {
             <THead>
               <tr>
                 <Th>File</Th>
-                <Th className="text-center">Kind</Th>
-                <Th className="text-right">Size</Th>
-                <Th className="text-right">Modified</Th>
+                <Th className="w-24 text-center">Kind</Th>
+                <Th className="w-24 text-right">Size</Th>
+                <Th className="w-28 text-right">Modified</Th>
                 <Th className="w-28" />
               </tr>
             </THead>

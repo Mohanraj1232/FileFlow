@@ -221,9 +221,9 @@ export default function History() {
                               <THead>
                                 <tr>
                                   <Th>Source</Th>
-                                  <Th>Action</Th>
+                                  <Th className="w-24">Action</Th>
                                   <Th>Destination</Th>
-                                  <Th className="text-center">Status</Th>
+                                  <Th className="w-28 text-center">Status</Th>
                                   <Th className="w-16" />
                                 </tr>
                               </THead>

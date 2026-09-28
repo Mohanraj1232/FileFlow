@@ -170,9 +170,9 @@ export default function Preview() {
                 <THead>
                   <tr>
                     <Th className="w-10" />
-                    <Th>File</Th>
-                    <Th>Rule</Th>
-                    <Th className="text-center">Action</Th>
+                    <Th className="w-64">File</Th>
+                    <Th className="w-40">Rule</Th>
+                    <Th className="w-24 text-center">Action</Th>
                     <Th>Destination</Th>
                   </tr>
                 </THead>
@@ -192,12 +192,19 @@ export default function Preview() {
                           className="h-4 w-4 cursor-pointer accent-[var(--accent)]"
                         />
                       </Td>
-                      <Td>{step.src_path.split(/[/\\]/).pop()}</Td>
-                      <Td className="text-fg-muted">{step.rule_name || "—"}</Td>
+                      <Td className="truncate" title={step.src_path}>
+                        {step.src_path.split(/[/\\]/).pop()}
+                      </Td>
+                      <Td className="truncate text-fg-muted" title={step.rule_name}>
+                        {step.rule_name || "—"}
+                      </Td>
                       <Td className="text-center">
                         <StatusBadge status={step.action_type} size="sm" />
                       </Td>
-                      <Td className="font-mono text-xs text-fg-muted">
+                      <Td
+                        className="truncate font-mono text-xs text-fg-muted"
+                        title={step.dst_path ?? undefined}
+                      >
                         {step.dst_path ?? "—"}
                       </Td>
                     </TRow>
