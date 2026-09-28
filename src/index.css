@@ -1,91 +1,162 @@
 @import "tailwindcss";
 
+/* ---------- Design tokens ----------
+   Raw tokens live on :root (light) and .dark. Components never read these
+   directly; they use the Tailwind colors mapped in @theme below
+   (bg-surface, text-fg-muted, border-border, bg-accent, ...). */
+
 :root {
-  --bg-primary: #ffffff;
-  --bg-secondary: #f8fafc;
-  --bg-tertiary: #f1f5f9;
-  --bg-sidebar: #1e293b;
-  --bg-sidebar-hover: #334155;
-  --bg-sidebar-active: rgba(255, 255, 255, 0.08);
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
-  --text-sidebar: #f1f5f9;
-  --text-sidebar-muted: #94a3b8;
-  --border-color: #e2e8f0;
-  --border-strong: #cbd5e1;
+  color-scheme: light;
+  --canvas: #f6f8fa;
+  --surface: #ffffff;
+  --inset: #f6f8fa;
+  --hover: #eef1f4;
+  --titlebar: #ffffff;
+  --border: #d0d7de;
+  --border-muted: #e6eaef;
+  --fg: #1f2328;
+  --fg-muted: #656d76;
+  --fg-subtle: #8c959f;
   --accent: #4f46e5;
   --accent-hover: #4338ca;
-  --accent-light: #eef2ff;
-  --success: #22c55e;
-  --success-light: #f0fdf4;
-  --warning: #f59e0b;
-  --warning-light: #fffbeb;
-  --danger: #ef4444;
-  --danger-light: #fef2f2;
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --accent-fg: #4338ca;
+  --accent-soft: #eef2ff;
+  --success: #1a7f37;
+  --success-soft: #dafbe1;
+  --warning: #9a6700;
+  --warning-soft: #fff8c5;
+  --danger: #cf222e;
+  --danger-soft: #ffebe9;
+  --elev-card: 0 1px 2px rgb(31 35 40 / 0.06);
+  --elev-pop: 0 8px 24px rgb(66 74 83 / 0.16);
 }
 
-/* Elevated-surface dark theme: page background sits behind card
-   surfaces one step lighter, with the sidebar a step darker still,
-   so depth reads from subtle contrast rather than borders alone. */
 .dark {
-  --bg-primary: #1e293b;
-  --bg-secondary: #0f172a;
-  --bg-tertiary: #334155;
-  --bg-sidebar: #020617;
-  --bg-sidebar-hover: #1e293b;
-  --bg-sidebar-active: rgba(255, 255, 255, 0.08);
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
-  --text-sidebar: #f1f5f9;
-  --text-sidebar-muted: #94a3b8;
-  --border-color: #334155;
-  --border-strong: #475569;
-  --accent: #818cf8;
-  --accent-hover: #6366f1;
-  --accent-light: #312e81;
-  --success: #4ade80;
-  --success-light: #14532d;
-  --warning: #fbbf24;
-  --warning-light: #451a03;
-  --danger: #f87171;
-  --danger-light: #450a0a;
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.2);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.2);
+  color-scheme: dark;
+  --canvas: #0d1117;
+  --surface: #161b22;
+  --inset: #1c2128;
+  --hover: #262c36;
+  --titlebar: #010409;
+  --border: #30363d;
+  --border-muted: #21262d;
+  --fg: #e6edf3;
+  --fg-muted: #8b949e;
+  --fg-subtle: #6e7681;
+  --accent: #6366f1;
+  --accent-hover: #4f46e5;
+  --accent-fg: #a5b4fc;
+  --accent-soft: rgb(99 102 241 / 0.15);
+  --success: #3fb950;
+  --success-soft: rgb(63 185 80 / 0.15);
+  --warning: #d29922;
+  --warning-soft: rgb(210 153 34 / 0.15);
+  --danger: #f85149;
+  --danger-soft: rgb(248 81 73 / 0.15);
+  --elev-card: 0 1px 0 rgb(1 4 9 / 0.4);
+  --elev-pop: 0 8px 24px rgb(1 4 9 / 0.75);
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+/* Legacy aliases for screens not yet migrated to the Tailwind tokens. */
+:root {
+  --bg-primary: var(--surface);
+  --bg-secondary: var(--inset);
+  --bg-tertiary: var(--hover);
+  --bg-sidebar: var(--surface);
+  --bg-sidebar-hover: var(--hover);
+  --bg-sidebar-active: var(--accent-soft);
+  --text-primary: var(--fg);
+  --text-secondary: var(--fg-muted);
+  --text-muted: var(--fg-subtle);
+  --text-sidebar: var(--fg);
+  --text-sidebar-muted: var(--fg-muted);
+  --border-color: var(--border);
+  --border-strong: var(--border);
+  --accent-light: var(--accent-soft);
+  --success-light: var(--success-soft);
+  --warning-light: var(--warning-soft);
+  --danger-light: var(--danger-soft);
+  --shadow-sm: var(--elev-card);
+  --shadow-md: var(--elev-pop);
 }
 
-body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
-    Ubuntu, Cantarell, sans-serif;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-inset: var(--inset);
+  --color-hover: var(--hover);
+  --color-titlebar: var(--titlebar);
+  --color-border: var(--border);
+  --color-border-muted: var(--border-muted);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --shadow-card: var(--elev-card);
+  --shadow-pop: var(--elev-pop);
+  --font-sans: "Segoe UI Variable", "Segoe UI", -apple-system,
+    BlinkMacSystemFont, "Inter", Roboto, sans-serif;
+  --font-mono: "Cascadia Code", "SF Mono", Consolas, "Liberation Mono", monospace;
 }
 
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* Electron window-drag regions for the custom title bar. */
+@utility drag {
+  -webkit-app-region: drag;
+  user-select: none;
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
+@utility no-drag {
+  -webkit-app-region: no-drag;
 }
 
-::-webkit-scrollbar-thumb {
-  background: var(--text-muted);
-  border-radius: 3px;
-}
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
 
-::-webkit-scrollbar-thumb:hover {
-  background: var(--text-secondary);
+  body {
+    background: var(--canvas);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow: hidden;
+  }
+
+  ::selection {
+    background: var(--accent-soft);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--fg-subtle);
+    background-clip: content-box;
+  }
 }

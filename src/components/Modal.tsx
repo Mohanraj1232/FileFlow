@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
+import Button from "./ui/Button";
 
 interface ModalProps {
   open: boolean;
@@ -29,34 +30,18 @@ export default function Modal({ open, onClose, title, children }: ModalProps) {
         if (e.target === overlayRef.current) onClose();
       }}
     >
-      <div className="absolute inset-0 bg-black/50" />
-      <div
-        className="relative w-full max-w-lg rounded-xl p-6 shadow-xl mx-4"
-        style={{
-          backgroundColor: "var(--bg-primary)",
-          border: "1px solid var(--border-color)",
-        }}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <h2
-            className="text-lg font-semibold"
-            style={{ color: "var(--text-primary)" }}
-          >
-            {title}
-          </h2>
-          <button
+      <div className="absolute inset-0 bg-black/60" />
+      <div className="relative mx-4 w-full max-w-lg rounded-xl border border-border bg-surface p-6 shadow-pop">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-fg">{title}</h2>
+          <Button
+            variant="ghost"
+            size="sm"
+            iconOnly
+            aria-label="Close"
+            icon={<X size={16} />}
             onClick={onClose}
-            className="p-1 rounded-md cursor-pointer"
-            style={{ color: "var(--text-muted)" }}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.color = "var(--text-primary)")
-            }
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.color = "var(--text-muted)")
-            }
-          >
-            <X size={18} />
-          </button>
+          />
         </div>
         {children}
       </div>

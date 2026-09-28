@@ -127,7 +127,7 @@ function migrateV1(db: any): void {
     );
     insertSetting.run('conflict_default', 'auto_rename');
     insertSetting.run('notification_level', 'batched');
-    insertSetting.run('theme', 'system');
+    insertSetting.run('theme', 'dark');
     insertSetting.run('scan_schedule_minutes', '60');
     insertSetting.run('ignore_patterns', '[]');
 
