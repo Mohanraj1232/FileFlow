@@ -3,13 +3,14 @@ const path = require('node:path');
 const journal = require('./journal');
 
 interface PlannedStep {
-  ruleId: number;
-  ruleName: string;
-  actionType: string;
-  srcPath: string;
-  dstPath: string | null;
-  fileSize: number;
-  fileMtime: string;
+  rule_id: number;
+  rule_name: string;
+  action_type: string;
+  src_path: string;
+  dst_path: string | null;
+  file_size: number;
+  file_mtime: string;
+  selected: boolean;
 }
 
 /**
@@ -91,38 +92,38 @@ async function executePlan(
     const stepId = journal.createStepPending(db, {
       operationId,
       seq: i + 1,
-      ruleId: step.ruleId,
-      actionType: step.actionType,
-      srcPath: step.srcPath,
-      dstPath: step.dstPath,
-      fileSize: step.fileSize,
-      fileMtime: step.fileMtime,
+      ruleId: step.rule_id,
+      actionType: step.action_type,
+      srcPath: step.src_path,
+      dstPath: step.dst_path,
+      fileSize: step.file_size,
+      fileMtime: step.file_mtime,
       contentHash: null,
     });
 
     try {
-      switch (step.actionType) {
+      switch (step.action_type) {
         case 'move':
         case 'rename':
-          executeMove(step.srcPath, step.dstPath!);
-          if (recentlyWritten && step.dstPath) {
-            recentlyWritten.add(step.dstPath);
+          executeMove(step.src_path, step.dst_path!);
+          if (recentlyWritten && step.dst_path) {
+            recentlyWritten.add(step.dst_path);
           }
           break;
 
         case 'copy':
-          executeCopy(step.srcPath, step.dstPath!);
-          if (recentlyWritten && step.dstPath) {
-            recentlyWritten.add(step.dstPath);
+          executeCopy(step.src_path, step.dst_path!);
+          if (recentlyWritten && step.dst_path) {
+            recentlyWritten.add(step.dst_path);
           }
           break;
 
         case 'trash':
-          await executeTrash(step.srcPath);
+          await executeTrash(step.src_path);
           break;
 
         default:
-          throw new Error(`Unknown action type: ${step.actionType}`);
+          throw new Error(`Unknown action type: ${step.action_type}`);
       }
 
       journal.markStepDone(db, stepId);

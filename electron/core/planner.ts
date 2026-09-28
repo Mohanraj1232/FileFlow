@@ -26,23 +26,31 @@ interface Rule {
   [key: string]: any;
 }
 
+// Field names here match src/lib/types.ts's PlannedStep/PlanSummary exactly —
+// this is the actual IPC contract the renderer reads (get_unsorted_files/
+// preview_folder/apply_plan all send these objects across the IPC boundary
+// as plain data, so nothing statically checks them against the renderer's
+// types; a naming mismatch here silently shows up as blank/undefined fields
+// in the UI instead of a compile error).
 interface PlannedStep {
-  ruleId: number;
-  ruleName: string;
-  actionType: string;
-  srcPath: string;
-  dstPath: string | null;
-  fileSize: number;
-  fileMtime: string;
+  rule_id: number;
+  rule_name: string;
+  action_type: string;
+  src_path: string;
+  dst_path: string | null;
+  file_size: number;
+  file_mtime: string;
+  selected: boolean;
 }
 
 interface PlanSummary {
-  totalFiles: number;
-  matchedFiles: number;
-  unmatchedFiles: number;
   steps: PlannedStep[];
-  byAction: Record<string, number>;
-  byRule: Record<string, number>;
+  move_count: number;
+  copy_count: number;
+  rename_count: number;
+  trash_count: number;
+  skip_count: number;
+  no_match_count: number;
 }
 
 /**
@@ -183,13 +191,14 @@ function plan(
         existingFiles.add(destPath.replace(/\\/g, '/'));
 
         steps.push({
-          ruleId: rule.id,
-          ruleName: rule.name,
-          actionType: 'move',
-          srcPath: currentPath,
-          dstPath: destPath,
-          fileSize: fileMeta.size,
-          fileMtime: (fileMeta.mtime instanceof Date ? fileMeta.mtime : new Date(fileMeta.mtime)).toISOString().slice(0, 19),
+          rule_id: rule.id,
+          rule_name: rule.name,
+          action_type: 'move',
+          src_path: currentPath,
+          dst_path: destPath,
+          file_size: fileMeta.size,
+          file_mtime: (fileMeta.mtime instanceof Date ? fileMeta.mtime : new Date(fileMeta.mtime)).toISOString().slice(0, 19),
+          selected: true,
         });
 
         currentPath = destPath;
@@ -205,13 +214,14 @@ function plan(
         existingFiles.add(destPath.replace(/\\/g, '/'));
 
         steps.push({
-          ruleId: rule.id,
-          ruleName: rule.name,
-          actionType: 'copy',
-          srcPath: currentPath,
-          dstPath: destPath,
-          fileSize: fileMeta.size,
-          fileMtime: (fileMeta.mtime instanceof Date ? fileMeta.mtime : new Date(fileMeta.mtime)).toISOString().slice(0, 19),
+          rule_id: rule.id,
+          rule_name: rule.name,
+          action_type: 'copy',
+          src_path: currentPath,
+          dst_path: destPath,
+          file_size: fileMeta.size,
+          file_mtime: (fileMeta.mtime instanceof Date ? fileMeta.mtime : new Date(fileMeta.mtime)).toISOString().slice(0, 19),
+          selected: true,
         });
         // copy does not change currentPath
         break;
@@ -235,13 +245,14 @@ function plan(
         existingFiles.add(destPath.replace(/\\/g, '/'));
 
         steps.push({
-          ruleId: rule.id,
-          ruleName: rule.name,
-          actionType: 'rename',
-          srcPath: currentPath,
-          dstPath: destPath,
-          fileSize: fileMeta.size,
-          fileMtime: (fileMeta.mtime instanceof Date ? fileMeta.mtime : new Date(fileMeta.mtime)).toISOString().slice(0, 19),
+          rule_id: rule.id,
+          rule_name: rule.name,
+          action_type: 'rename',
+          src_path: currentPath,
+          dst_path: destPath,
+          file_size: fileMeta.size,
+          file_mtime: (fileMeta.mtime instanceof Date ? fileMeta.mtime : new Date(fileMeta.mtime)).toISOString().slice(0, 19),
+          selected: true,
         });
 
         currentPath = destPath;
@@ -250,13 +261,14 @@ function plan(
 
       case 'trash': {
         steps.push({
-          ruleId: rule.id,
-          ruleName: rule.name,
-          actionType: 'trash',
-          srcPath: currentPath,
-          dstPath: null,
-          fileSize: fileMeta.size,
-          fileMtime: (fileMeta.mtime instanceof Date ? fileMeta.mtime : new Date(fileMeta.mtime)).toISOString().slice(0, 19),
+          rule_id: rule.id,
+          rule_name: rule.name,
+          action_type: 'trash',
+          src_path: currentPath,
+          dst_path: null,
+          file_size: fileMeta.size,
+          file_mtime: (fileMeta.mtime instanceof Date ? fileMeta.mtime : new Date(fileMeta.mtime)).toISOString().slice(0, 19),
+          selected: true,
         });
         break;
       }
@@ -272,26 +284,22 @@ function plan(
 function buildSummary(
   steps: PlannedStep[],
   unmatchedCount: number,
-  totalFiles: number
+  _totalFiles: number
 ): PlanSummary {
   const byAction: Record<string, number> = {};
-  const byRule: Record<string, number> = {};
 
   for (const step of steps) {
-    byAction[step.actionType] = (byAction[step.actionType] || 0) + 1;
-    byRule[step.ruleName] = (byRule[step.ruleName] || 0) + 1;
+    byAction[step.action_type] = (byAction[step.action_type] || 0) + 1;
   }
 
-  // Count unique source files that have steps
-  const matchedPaths = new Set(steps.map((s) => s.srcPath));
-
   return {
-    totalFiles,
-    matchedFiles: matchedPaths.size,
-    unmatchedFiles: unmatchedCount,
     steps,
-    byAction,
-    byRule,
+    move_count: byAction.move || 0,
+    copy_count: byAction.copy || 0,
+    rename_count: byAction.rename || 0,
+    trash_count: byAction.trash || 0,
+    skip_count: 0,
+    no_match_count: unmatchedCount,
   };
 }
 
