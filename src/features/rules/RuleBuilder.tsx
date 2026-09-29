@@ -86,6 +86,7 @@ export default function RuleBuilder() {
   const isEditing = Boolean(id);
 
   const [name, setName] = useState("");
+  const [priority, setPriority] = useState(0);
   const [trigger, setTrigger] = useState<TriggerType>("arrival");
   const [groupType, setGroupType] = useState<"all" | "any">("all");
   const [conditions, setConditions] = useState<ConditionRow[]>(() => {
@@ -129,6 +130,7 @@ export default function RuleBuilder() {
         const rule = rules.find((r) => r.id === Number(id));
         if (!rule) return;
         setName(rule.name);
+        setPriority(rule.priority);
         setTrigger(rule.trigger);
 
         const cond = rule.condition;
@@ -258,7 +260,7 @@ export default function RuleBuilder() {
       ...(id ? { id: Number(id) } : {}),
       name,
       enabled: true,
-      priority: 0,
+      priority,
       trigger,
       condition,
       stop_after: true,
