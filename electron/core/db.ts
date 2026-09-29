@@ -6,7 +6,20 @@ function getDbPath(userDataPath: string): string {
   return path.join(userDataPath, 'fileflow.db');
 }
 
-function initDb(userDataPath: string): any {
+/**
+ * Standard OS folders used to seed default rule destinations. Passed in by
+ * main.ts (via Electron's app.getPath) rather than required directly here,
+ * so this module stays free of an Electron dependency and easy to test.
+ */
+interface DefaultPaths {
+  documents: string;
+  pictures: string;
+  videos: string;
+  music: string;
+  downloads: string;
+}
+
+function initDb(userDataPath: string, defaultPaths: DefaultPaths): any {
   const dbDir = userDataPath;
   if (!fs.existsSync(dbDir)) {
     fs.mkdirSync(dbDir, { recursive: true });
@@ -19,12 +32,12 @@ function initDb(userDataPath: string): any {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
 
-  runMigrations(db);
+  runMigrations(db, defaultPaths);
 
   return db;
 }
 
-function runMigrations(db: any): void {
+function runMigrations(db: any, defaultPaths: DefaultPaths): void {
   // Check current schema version
   const hasVersionTable = db
     .prepare(
@@ -41,11 +54,53 @@ function runMigrations(db: any): void {
   }
 
   if (currentVersion < 1) {
-    migrateV1(db);
+    migrateV1(db, defaultPaths);
   }
 }
 
-function migrateV1(db: any): void {
+/**
+ * A basic, common rule set seeded once on a brand-new install (schema
+ * version 0 -> 1), so the app is immediately useful instead of shipping
+ * with an empty rule list. Destinations use Electron's app.getPath()
+ * results, which resolve to the correct standard folder per OS, so this
+ * works unmodified on Windows, macOS, and Linux. Deliberately does not
+ * include a catch-all "match everything" rule: files with no matching
+ * kind stay visible in Unsorted for the user to review rather than being
+ * silently moved by a rule they never reviewed.
+ */
+function seedDefaultRules(db: any, defaultPaths: DefaultPaths, now: string): void {
+  const insertRule = db.prepare(`
+    INSERT INTO rules (name, enabled, priority, trigger_type, condition, stop_after, scope_folder, created_at, updated_at)
+    VALUES (?, 1, ?, 'both', ?, 1, NULL, ?, ?)
+  `);
+  const insertAction = db.prepare(`
+    INSERT INTO rule_actions (rule_id, position, action_type, params)
+    VALUES (?, 0, 'move', ?)
+  `);
+
+  const archives = path.join(defaultPaths.documents, 'Archives');
+  const code = path.join(defaultPaths.documents, 'Code');
+  const installers = path.join(defaultPaths.downloads, 'Installers');
+
+  const rules: { name: string; kind: string; destination: string; priority: number }[] = [
+    { name: 'Sort Documents', kind: 'document', destination: defaultPaths.documents, priority: 10 },
+    { name: 'Sort Images', kind: 'image', destination: defaultPaths.pictures, priority: 20 },
+    { name: 'Sort Videos', kind: 'video', destination: defaultPaths.videos, priority: 30 },
+    { name: 'Sort Audio', kind: 'audio', destination: defaultPaths.music, priority: 40 },
+    { name: 'Sort Archives', kind: 'archive', destination: archives, priority: 50 },
+    { name: 'Sort Code Files', kind: 'code', destination: code, priority: 60 },
+    { name: 'Sort Installers', kind: 'installer', destination: installers, priority: 70 },
+  ];
+
+  for (const rule of rules) {
+    const condition = JSON.stringify({ field: 'kind', op: 'is', value: rule.kind });
+    const result = insertRule.run(rule.name, rule.priority, condition, now, now);
+    const params = JSON.stringify({ destination: rule.destination, on_conflict: 'auto_rename' });
+    insertAction.run(result.lastInsertRowid, params);
+  }
+}
+
+function migrateV1(db: any, defaultPaths: DefaultPaths): void {
   const migrate = db.transaction(() => {
     db.exec(`
       CREATE TABLE IF NOT EXISTS watched_folders (
@@ -130,6 +185,11 @@ function migrateV1(db: any): void {
     insertSetting.run('theme', 'dark');
     insertSetting.run('scan_schedule_minutes', '60');
     insertSetting.run('ignore_patterns', '[]');
+
+    // Seed a basic common rule set so the app is useful immediately on a
+    // fresh install, on any device/OS.
+    const now = new Date().toISOString().slice(0, 19);
+    seedDefaultRules(db, defaultPaths, now);
 
     // Set schema version
     db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(1);
