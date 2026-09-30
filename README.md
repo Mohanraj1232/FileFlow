@@ -70,7 +70,7 @@ A file tool that loses files is worse than no tool, so these rules are built in:
 ### Run in development
 
 ```bash
-git clone https://github.com/<your-username>/FileFlow.git
+git clone https://github.com/Mohanraj1232/FileFlow.git
 cd FileFlow
 npm install
 npm run electron:dev
@@ -170,4 +170,4 @@ Issues and pull requests are welcome. For larger changes, please open an issue f
 
 ## License
 
-No license has been chosen yet. Add a `LICENSE` file (for example MIT) before publishing, and replace this section with its name.
+Released under the [MIT License](LICENSE).
