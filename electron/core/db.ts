@@ -6,20 +6,7 @@ function getDbPath(userDataPath: string): string {
   return path.join(userDataPath, 'fileflow.db');
 }
 
-/**
- * Standard OS folders used to seed default rule destinations. Passed in by
- * main.ts (via Electron's app.getPath) rather than required directly here,
- * so this module stays free of an Electron dependency and easy to test.
- */
-interface DefaultPaths {
-  documents: string;
-  pictures: string;
-  videos: string;
-  music: string;
-  downloads: string;
-}
-
-function initDb(userDataPath: string, defaultPaths: DefaultPaths): any {
+function initDb(userDataPath: string): any {
   const dbDir = userDataPath;
   if (!fs.existsSync(dbDir)) {
     fs.mkdirSync(dbDir, { recursive: true });
@@ -32,12 +19,12 @@ function initDb(userDataPath: string, defaultPaths: DefaultPaths): any {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
 
-  runMigrations(db, defaultPaths);
+  runMigrations(db);
 
   return db;
 }
 
-function runMigrations(db: any, defaultPaths: DefaultPaths): void {
+function runMigrations(db: any): void {
   // Check current schema version
   const hasVersionTable = db
     .prepare(
@@ -54,21 +41,23 @@ function runMigrations(db: any, defaultPaths: DefaultPaths): void {
   }
 
   if (currentVersion < 1) {
-    migrateV1(db, defaultPaths);
+    migrateV1(db);
   }
 }
 
 /**
  * A basic, common rule set seeded once on a brand-new install (schema
  * version 0 -> 1), so the app is immediately useful instead of shipping
- * with an empty rule list. Destinations use Electron's app.getPath()
- * results, which resolve to the correct standard folder per OS, so this
- * works unmodified on Windows, macOS, and Linux. Deliberately does not
- * include a catch-all "match everything" rule: files with no matching
- * kind stay visible in Unsorted for the user to review rather than being
- * silently moved by a rule they never reviewed.
+ * with an empty rule list. Destinations use the {root} template variable
+ * (electron/core/planner.ts expandVariables), which resolves to whichever
+ * folder the matched file was actually found in — so the same seeded rule
+ * organizes correctly inside every folder the user later watches, rather
+ * than funneling everything into one path hardcoded at install time.
+ * Deliberately does not include a catch-all "match everything" rule: files
+ * with no matching kind stay visible in Unsorted for the user to review
+ * rather than being silently moved by a rule they never reviewed.
  */
-function seedDefaultRules(db: any, defaultPaths: DefaultPaths, now: string): void {
+function seedDefaultRules(db: any, now: string): void {
   const insertRule = db.prepare(`
     INSERT INTO rules (name, enabled, priority, trigger_type, condition, stop_after, scope_folder, created_at, updated_at)
     VALUES (?, 1, ?, 'both', ?, 1, NULL, ?, ?)
@@ -78,29 +67,28 @@ function seedDefaultRules(db: any, defaultPaths: DefaultPaths, now: string): voi
     VALUES (?, 0, 'move', ?)
   `);
 
-  const archives = path.join(defaultPaths.documents, 'Archives');
-  const code = path.join(defaultPaths.documents, 'Code');
-  const installers = path.join(defaultPaths.downloads, 'Installers');
-
-  const rules: { name: string; kind: string; destination: string; priority: number }[] = [
-    { name: 'Sort Documents', kind: 'document', destination: defaultPaths.documents, priority: 10 },
-    { name: 'Sort Images', kind: 'image', destination: defaultPaths.pictures, priority: 20 },
-    { name: 'Sort Videos', kind: 'video', destination: defaultPaths.videos, priority: 30 },
-    { name: 'Sort Audio', kind: 'audio', destination: defaultPaths.music, priority: 40 },
-    { name: 'Sort Archives', kind: 'archive', destination: archives, priority: 50 },
-    { name: 'Sort Code Files', kind: 'code', destination: code, priority: 60 },
-    { name: 'Sort Installers', kind: 'installer', destination: installers, priority: 70 },
+  const rules: { name: string; kind: string; subfolder: string; priority: number }[] = [
+    { name: 'Sort Documents', kind: 'document', subfolder: 'Documents', priority: 10 },
+    { name: 'Sort Images', kind: 'image', subfolder: 'Images', priority: 20 },
+    { name: 'Sort Videos', kind: 'video', subfolder: 'Videos', priority: 30 },
+    { name: 'Sort Audio', kind: 'audio', subfolder: 'Audio', priority: 40 },
+    { name: 'Sort Archives', kind: 'archive', subfolder: 'Archives', priority: 50 },
+    { name: 'Sort Code Files', kind: 'code', subfolder: 'Code', priority: 60 },
+    { name: 'Sort Installers', kind: 'installer', subfolder: 'Installers', priority: 70 },
   ];
 
   for (const rule of rules) {
     const condition = JSON.stringify({ field: 'kind', op: 'is', value: rule.kind });
     const result = insertRule.run(rule.name, rule.priority, condition, now, now);
-    const params = JSON.stringify({ destination: rule.destination, on_conflict: 'auto_rename' });
+    const params = JSON.stringify({
+      destination: `{root}/${rule.subfolder}`,
+      on_conflict: 'auto_rename',
+    });
     insertAction.run(result.lastInsertRowid, params);
   }
 }
 
-function migrateV1(db: any, defaultPaths: DefaultPaths): void {
+function migrateV1(db: any): void {
   const migrate = db.transaction(() => {
     db.exec(`
       CREATE TABLE IF NOT EXISTS watched_folders (
@@ -189,7 +177,7 @@ function migrateV1(db: any, defaultPaths: DefaultPaths): void {
     // Seed a basic common rule set so the app is useful immediately on a
     // fresh install, on any device/OS.
     const now = new Date().toISOString().slice(0, 19);
-    seedDefaultRules(db, defaultPaths, now);
+    seedDefaultRules(db, now);
 
     // Set schema version
     db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(1);

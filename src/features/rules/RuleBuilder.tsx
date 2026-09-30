@@ -558,7 +558,7 @@ export default function RuleBuilder() {
                           onChange={(e) =>
                             updateAction(act.id, { destination: e.target.value })
                           }
-                          placeholder="Destination folder (e.g., Documents/{kind})"
+                          placeholder="Destination folder (e.g., {root}/{kind} or an absolute path)"
                         />
                       </div>
                       <Button

@@ -92,6 +92,11 @@ function expandVariables(template: string, fileMeta: FileMeta): string {
   const day = String(mtime.getDate()).padStart(2, '0');
 
   let result = template;
+  // The folder the file currently lives in — lets a destination be
+  // expressed relative to whichever watched folder produced the file
+  // (e.g. "{root}/Audio") instead of a path hardcoded to one specific
+  // watched folder, so the same rule works across every folder watched.
+  result = result.replace(/\{root\}/g, fileMeta.sourceFolder);
   result = result.replace(/\{kind\}/g, fileMeta.kind);
   result = result.replace(/\{ext\}/g, fileMeta.extension);
   result = result.replace(/\{name\}/g, fileMeta.name);

@@ -180,18 +180,9 @@ function startWatchingFolders(): void {
 // ===== App lifecycle =====
 
 app.whenReady().then(() => {
-  // Initialize database. defaultPaths seeds the fresh-install rule set with
-  // this OS's actual standard folders (Documents/Pictures/Videos/Music/
-  // Downloads), so it works unmodified on Windows, macOS, and Linux.
+  // Initialize database
   const userDataPath = app.getPath('userData');
-  const defaultPaths = {
-    documents: app.getPath('documents'),
-    pictures: app.getPath('pictures'),
-    videos: app.getPath('videos'),
-    music: app.getPath('music'),
-    downloads: app.getPath('downloads'),
-  };
-  db = initDb(userDataPath, defaultPaths);
+  db = initDb(userDataPath);
 
   // Recover any pending operations from a previous crash
   recoverPending(db);
