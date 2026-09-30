@@ -187,6 +187,9 @@ function plan(
 
     switch (action.action_type) {
       case 'move': {
+        // A destination-less action (saved with an empty field) can't be planned;
+        // skip it rather than crash the whole scan.
+        if (!params.destination) break;
         const destFolder = expandVariables(params.destination, fileMeta);
         const fileName = path.basename(currentPath);
         let destPath = path.join(destFolder, fileName);
@@ -211,6 +214,9 @@ function plan(
       }
 
       case 'copy': {
+        // A destination-less action (saved with an empty field) can't be planned;
+        // skip it rather than crash the whole scan.
+        if (!params.destination) break;
         const destFolder = expandVariables(params.destination, fileMeta);
         const fileName = path.basename(currentPath);
         let destPath = path.join(destFolder, fileName);

@@ -281,6 +281,10 @@ export default function RuleBuilder() {
       setError("At least one action is required.");
       return;
     }
+    if (actions.some((x) => ["move", "copy"].includes(x.action_type) && !x.destination.trim())) {
+      setError("Move and copy actions need a destination folder.");
+      return;
+    }
     setError("");
     setSaving(true);
     try {
