@@ -221,7 +221,7 @@ async function evaluate(
   // mode but is intentionally not consulted here today.
   // Filter enabled rules matching trigger type, sort by priority (lower number = higher priority)
   const candidateRules = rules
-    .filter((r) => r.enabled === 1 && r.trigger_type === trigger)
+    .filter((r) => r.enabled === 1 && (r.trigger_type === trigger || r.trigger_type === 'both'))
     .sort((a, b) => a.priority - b.priority);
 
   for (const rule of candidateRules) {
