@@ -160,13 +160,24 @@ function createWatcher(
   const watcher = chokidar.watch([], {
     persistent: true,
     ignoreInitial: true,
+    depth: 1,
     awaitWriteFinish: {
       stabilityThreshold: 2000,
       pollInterval: 500,
     },
-    // Ignore dot files and common system files
     ignored: [
       /(^|[/\\])\../,
+      '**/node_modules/**',
+      '**/.git/**',
+      '**/dist/**',
+      '**/dist-electron/**',
+      '**/build/**',
+      '**/release/**',
+      '**/__pycache__/**',
+      '**/vendor/**',
+      '**/Pods/**',
+      '**/DerivedData/**',
+      '**/.build/**',
       '**/desktop.ini',
       '**/Thumbs.db',
       '**/.DS_Store',
