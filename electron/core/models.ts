@@ -1,7 +1,7 @@
-const fs = require('node:fs');
-const path = require('node:path');
+import fs from 'node:fs';
+import path from 'node:path';
 
-type FileKind =
+export type FileKind =
   | 'document'
   | 'image'
   | 'video'
@@ -11,7 +11,7 @@ type FileKind =
   | 'installer'
   | 'other';
 
-interface FileMetaInfo {
+export interface FileMetaInfo {
   name: string;
   extension: string;
   size: number;
@@ -19,8 +19,25 @@ interface FileMetaInfo {
   kind: FileKind;
   path: string;
   sourceFolder: string;
+  /**
+   * The watched folder this file belongs to. `{root}` in destination templates
+   * expands to this, so a file already sorted into `<root>/Documents` still
+   * resolves `{root}/Documents` to the same folder instead of nesting deeper.
+   * Defaults to `sourceFolder` when the caller does not know the watched root.
+   */
+  watchRoot: string;
 }
 
+/**
+ * Extension -> kind. Ambiguous extensions are decided deliberately:
+ *  - ts    : TypeScript source (code). MPEG transport streams use .mts/.m2ts here.
+ *  - dmg   : macOS installer image (installer), not a generic archive.
+ *  - iso   : disk image (archive).
+ *  - pkg   : installer package (installer).
+ *  - ai/eps/psd : design files (image).
+ *  - raw   : camera raw (image).
+ *  - log   : text log (document).
+ */
 const KIND_MAP: Record<string, FileKind> = {
   // Documents
   pdf: 'document',
@@ -82,7 +99,8 @@ const KIND_MAP: Record<string, FileKind> = {
   mpg: 'video',
   mpeg: 'video',
   '3gp': 'video',
-  ts: 'video',
+  mts: 'video',
+  m2ts: 'video',
   vob: 'video',
 
   // Audio
@@ -112,14 +130,12 @@ const KIND_MAP: Record<string, FileKind> = {
   lz: 'archive',
   cab: 'archive',
   iso: 'archive',
-  dmg: 'archive',
   tgz: 'archive',
 
   // Code
   js: 'code',
   jsx: 'code',
-  // Note: .ts is listed under video (transport stream); for code detection
-  // rely on the kind map order — but we handle .ts in code context separately.
+  ts: 'code',
   tsx: 'code',
   py: 'code',
   rb: 'code',
@@ -162,6 +178,7 @@ const KIND_MAP: Record<string, FileKind> = {
   // Installers
   exe: 'installer',
   msi: 'installer',
+  dmg: 'installer',
   deb: 'installer',
   rpm: 'installer',
   appimage: 'installer',
@@ -171,12 +188,14 @@ const KIND_MAP: Record<string, FileKind> = {
   flatpak: 'installer',
 };
 
-function extensionToKind(ext: string): FileKind {
+export function extensionToKind(ext: string): FileKind {
   const normalized = ext.toLowerCase().replace(/^\./, '');
-  return KIND_MAP[normalized] || 'other';
+  return Object.prototype.hasOwnProperty.call(KIND_MAP, normalized)
+    ? KIND_MAP[normalized]
+    : 'other';
 }
 
-function getFileMeta(filePath: string): FileMetaInfo {
+export function getFileMeta(filePath: string, watchRoot?: string): FileMetaInfo {
   const stat = fs.statSync(filePath);
   const parsed = path.parse(filePath);
   const ext = parsed.ext.replace(/^\./, '').toLowerCase();
@@ -189,9 +208,6 @@ function getFileMeta(filePath: string): FileMetaInfo {
     kind: extensionToKind(ext),
     path: filePath,
     sourceFolder: parsed.dir,
+    watchRoot: watchRoot ?? parsed.dir,
   };
 }
-
-module.exports = { extensionToKind, getFileMeta };
-// Re-export types via declaration for TypeScript consumers
-export type { FileKind, FileMetaInfo };

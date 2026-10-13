@@ -8,6 +8,9 @@ import type {
   DashboardStats,
   UnsortedFile,
   AppSettings,
+  TestRuleResult,
+  ApplyResult,
+  FileProcessedEvent,
 } from "./types";
 
 export async function getWatchedFolders(): Promise<WatchedFolder[]> {
@@ -57,15 +60,20 @@ export async function toggleRule(
 
 export async function reorderRules(
   ruleIds: number[],
-): Promise<void> {
+): Promise<Rule[]> {
   return window.electronAPI.reorderRules(ruleIds);
 }
 
+/**
+ * Test a file name against the saved rules, a single saved rule (`ruleId`),
+ * or an unsaved rule exactly as the builder currently shows it (`draft`).
+ */
 export async function testRule(
   filename: string,
   ruleId?: number,
-): Promise<{ matched: boolean; rule_name?: string; destination?: string }> {
-  return window.electronAPI.testRule(filename, ruleId);
+  draft?: Rule,
+): Promise<TestRuleResult> {
+  return window.electronAPI.testRule(filename, ruleId ?? null, draft);
 }
 
 export async function previewFolder(
@@ -74,11 +82,19 @@ export async function previewFolder(
   return window.electronAPI.previewFolder(folderId);
 }
 
+/** Run the previewed plan. Only the plan id and the ticked files are sent, never raw paths. */
 export async function applyPlan(
   folderId: number,
-  selectedPaths: string[],
-): Promise<Operation> {
-  return window.electronAPI.applyPlan(folderId, selectedPaths);
+  planId: string,
+  selectedFileKeys: string[] | null,
+): Promise<ApplyResult> {
+  return window.electronAPI.applyPlan(folderId, planId, selectedFileKeys);
+}
+
+export function onFileProcessed(
+  callback: (event: FileProcessedEvent) => void,
+): () => void {
+  return window.electronAPI.onFileProcessed(callback);
 }
 
 export async function getOperations(

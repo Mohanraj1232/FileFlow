@@ -9,12 +9,14 @@ import type {
   ActionType,
   TriggerType,
   ConflictPolicy,
+  TestRuleResult,
 } from "../../lib/types";
 import { createRule, updateRule, getRules, testRule } from "../../lib/commands";
 import Button from "../../components/ui/Button";
 import PageHeader from "../../components/ui/PageHeader";
 import { Card, CardHeader, CardBody } from "../../components/ui/Card";
 import { Label, Input, Select } from "../../components/ui/Field";
+import { errorMessage } from "../../lib/errors";
 
 const FIELD_OPTIONS = [
   { value: "extension", label: "File Extension" },
@@ -73,7 +75,8 @@ interface ActionRow {
   action_type: ActionType;
   destination: string;
   pattern: string;
-  on_conflict: ConflictPolicy;
+  /** Optional override of Settings > conflict policy. Left unset, the global policy applies. */
+  on_conflict?: ConflictPolicy;
 }
 
 let nextCondId = 1;
@@ -110,15 +113,10 @@ export default function RuleBuilder() {
       action_type: "move",
       destination: "",
       pattern: "",
-      on_conflict: "auto_rename",
     },
   ]);
   const [testFilename, setTestFilename] = useState("");
-  const [testResult, setTestResult] = useState<{
-    matched: boolean;
-    rule_name?: string;
-    destination?: string;
-  } | null>(null);
+  const [testResult, setTestResult] = useState<TestRuleResult | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -168,7 +166,8 @@ export default function RuleBuilder() {
             action_type: a.action_type,
             destination: a.params.destination ?? "",
             pattern: a.params.pattern ?? "",
-            on_conflict: a.params.on_conflict ?? "auto_rename",
+            // Keep a deliberately chosen override when editing; otherwise leave it unset.
+            on_conflict: a.params.on_conflict,
           })),
         );
       } catch {
@@ -211,7 +210,6 @@ export default function RuleBuilder() {
         action_type: "move",
         destination: "",
         pattern: "",
-        on_conflict: "auto_rename",
       },
     ]);
   }
@@ -252,7 +250,7 @@ export default function RuleBuilder() {
       params: {
         ...(a.destination ? { destination: a.destination } : {}),
         ...(a.pattern ? { pattern: a.pattern } : {}),
-        on_conflict: a.on_conflict,
+        ...(a.on_conflict ? { on_conflict: a.on_conflict } : {}),
       },
     }));
 
@@ -296,7 +294,7 @@ export default function RuleBuilder() {
       }
       navigate("/rules");
     } catch (e) {
-      setError(String(e));
+      setError(errorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -305,7 +303,8 @@ export default function RuleBuilder() {
   async function handleTest() {
     if (!testFilename.trim()) return;
     try {
-      const result = await testRule(testFilename, id ? Number(id) : undefined);
+      // Test the rule exactly as it is on screen, saved or not.
+      const result = await testRule(testFilename, undefined, buildRule());
       setTestResult(result);
     } catch {
       setTestResult({ matched: false });
@@ -660,7 +659,10 @@ export default function RuleBuilder() {
                   <>
                     <strong>Match!</strong>
                     {testResult.destination && (
-                      <> — would move to <code>{testResult.destination}</code></>
+                      <> — would go to <code>{testResult.destination}</code></>
+                    )}
+                    {testResult.new_name && (
+                      <> — would be renamed to <code>{testResult.new_name}</code></>
                     )}
                   </>
                 ) : (

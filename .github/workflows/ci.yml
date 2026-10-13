@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    name: Typecheck, test, build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # The postinstall script rebuilds better-sqlite3 for Electron's ABI,
+      # which is what the tests run under.
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      # Backend tests run under Electron's own Node (ELECTRON_RUN_AS_NODE),
+      # on temporary directories and synthetic files only.
+      - run: npm test
+
+      - run: npm run build
+      - run: npm run build:electron

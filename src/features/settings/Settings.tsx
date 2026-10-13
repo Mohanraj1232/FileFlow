@@ -5,6 +5,7 @@ import type { AppSettings, ConflictPolicy } from "../../lib/types";
 import { getSettings, updateSetting } from "../../lib/commands";
 import { applyTheme as applyThemeToDocument } from "../../lib/theme";
 import { useToast } from "../../components/Toast";
+import { errorMessage } from "../../lib/errors";
 import Button from "../../components/ui/Button";
 import PageHeader from "../../components/ui/PageHeader";
 import { Card, CardHeader, CardBody } from "../../components/ui/Card";
@@ -87,12 +88,7 @@ export default function Settings() {
     setSaved(false);
     try {
       await updateSetting("conflict_default", settings.conflict_default);
-      await updateSetting("notification_level", settings.notification_level);
       await updateSetting("theme", settings.theme);
-      await updateSetting(
-        "scan_schedule_minutes",
-        String(settings.scan_schedule_minutes),
-      );
       await updateSetting(
         "ignore_patterns",
         JSON.stringify(settings.ignore_patterns),
@@ -100,7 +96,7 @@ export default function Settings() {
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (e) {
-      addToast({ type: "error", text: `Failed to save settings: ${String(e)}` });
+      addToast({ type: "error", text: `Failed to save settings: ${errorMessage(e)}` });
     } finally {
       setSaving(false);
     }
@@ -146,8 +142,11 @@ export default function Settings() {
         <Card>
           <CardHeader title="File Handling" />
           <CardBody className="space-y-4">
-            <SettingRow label="Default conflict policy">
-              <div className="w-64">
+            <SettingRow
+              label="When a file with the same name already exists"
+              description="Existing files are never overwritten. A rule can override this."
+            >
+              <div className="w-72">
                 <Select
                   value={settings.conflict_default}
                   onChange={(e) =>
@@ -157,51 +156,12 @@ export default function Settings() {
                     }))
                   }
                 >
-                  <option value="auto_rename">Auto-rename (e.g., file (2).pdf)</option>
-                  <option value="skip">Skip</option>
-                  <option value="replace_if_duplicate">
-                    Replace if duplicate (same hash)
+                  <option value="auto_rename">Keep both (new file becomes "name (2)")</option>
+                  <option value="skip">Skip (leave the file where it is)</option>
+                  <option value="replace_if_identical">
+                    Remove duplicate only if identical, else keep both
                   </option>
                 </Select>
-              </div>
-            </SettingRow>
-
-            <SettingRow label="Notification level">
-              <div className="w-64">
-                <Select
-                  value={settings.notification_level}
-                  onChange={(e) =>
-                    setSettings((s) => ({
-                      ...s,
-                      notification_level: e.target.value as AppSettings["notification_level"],
-                    }))
-                  }
-                >
-                  <option value="all">All (one per file)</option>
-                  <option value="batched">Batched (summary every few files)</option>
-                  <option value="errors_only">Errors only</option>
-                  <option value="none">None</option>
-                </Select>
-              </div>
-            </SettingRow>
-
-            <SettingRow
-              label="Scan schedule"
-              description="How often watched folders are rescanned, in minutes"
-            >
-              <div className="w-24">
-                <Input
-                  type="number"
-                  min={5}
-                  max={1440}
-                  value={settings.scan_schedule_minutes}
-                  onChange={(e) =>
-                    setSettings((s) => ({
-                      ...s,
-                      scan_schedule_minutes: Number(e.target.value) || 60,
-                    }))
-                  }
-                />
               </div>
             </SettingRow>
           </CardBody>
@@ -210,7 +170,7 @@ export default function Settings() {
         <Card>
           <CardHeader
             title="Ignore Patterns"
-            description="Files matching these patterns will always be skipped"
+            description='Matching files and folders are never touched. A pattern without a slash matches names anywhere (*.tmp, node_modules); with a slash it matches the path inside the watched folder (Backups/**). Applies to scans and live watching.'
           />
           <CardBody>
             <div className="mb-3 flex gap-2">

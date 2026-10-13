@@ -15,6 +15,8 @@ import { Card } from "../../components/ui/Card";
 import { Table, THead, Th, TRow, Td } from "../../components/ui/Table";
 import { LoadingState } from "../../components/ui/Spinner";
 import { useToast } from "../../components/Toast";
+import { DATA_CHANGED_EVENT } from "../../app/Layout";
+import { errorMessage } from "../../lib/errors";
 
 function groupByDay(ops: Operation[]): Map<string, Operation[]> {
   const groups = new Map<string, Operation[]>();
@@ -70,6 +72,13 @@ export default function History() {
 
   useEffect(() => {
     loadOperations(0, false);
+    // Reload when the watcher organizes something while this page is open.
+    const reload = () => {
+      setPage(0);
+      loadOperations(0, false);
+    };
+    window.addEventListener(DATA_CHANGED_EVENT, reload);
+    return () => window.removeEventListener(DATA_CHANGED_EVENT, reload);
   }, []);
 
   async function toggleExpand(opId: number) {
@@ -107,7 +116,7 @@ export default function History() {
       }
       loadOperations(0, false);
     } catch (e) {
-      addToast({ type: "error", text: String(e) });
+      addToast({ type: "error", text: errorMessage(e) });
     } finally {
       setUndoing(null);
     }
@@ -127,7 +136,7 @@ export default function History() {
       }
       loadOperations(0, false);
     } catch (e) {
-      addToast({ type: "error", text: String(e) });
+      addToast({ type: "error", text: errorMessage(e) });
     } finally {
       setUndoing(null);
     }
