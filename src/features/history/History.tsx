@@ -8,6 +8,7 @@ import {
   undoStep,
 } from "../../lib/commands";
 import StatusBadge from "../../components/StatusBadge";
+import Badge from "../../components/ui/Badge";
 import EmptyState from "../../components/EmptyState";
 import Button from "../../components/ui/Button";
 import PageHeader from "../../components/ui/PageHeader";
@@ -195,6 +196,12 @@ export default function History() {
                             {op.summary ?? `Operation #${op.id}`}
                           </span>
                           <StatusBadge status={op.status} size="sm" />
+                          {op.source.startsWith("duplicates:") && (
+                            <Badge tone="accent" size="sm">Duplicates</Badge>
+                          )}
+                          {op.source === "watcher" && (
+                            <Badge tone="neutral" size="sm">Automatic</Badge>
+                          )}
                         </div>
                         <div className="flex items-center gap-3">
                           <span className="text-xs text-fg-muted">

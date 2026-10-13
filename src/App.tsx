@@ -7,6 +7,7 @@ import Preview from "./features/preview/Preview";
 import History from "./features/history/History";
 import Unsorted from "./features/unsorted/Unsorted";
 import Settings from "./features/settings/Settings";
+import Duplicates from "./features/duplicates/Duplicates";
 import { ToastProvider } from "./components/Toast";
 
 export default function App() {
@@ -22,6 +23,7 @@ export default function App() {
           <Route path="/preview/:folderId" element={<Preview />} />
           <Route path="/history" element={<History />} />
           <Route path="/unsorted" element={<Unsorted />} />
+          <Route path="/duplicates" element={<Duplicates />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
       </Routes>

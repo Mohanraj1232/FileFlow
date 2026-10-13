@@ -24,6 +24,7 @@ export const IGNORED_DIRS = new Set([
   'dist-electron',
   'build',
   'release',
+  'FileFlow Quarantine', // where the duplicate finder parks removed copies
   '__pycache__',
   'vendor',
   'Pods',

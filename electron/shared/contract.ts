@@ -226,3 +226,114 @@ export interface FileProcessedEvent {
   actions: number;
   operation_id: number;
 }
+
+// ---------------------------------------------------------------------------
+// Duplicate finder
+// ---------------------------------------------------------------------------
+
+export interface DuplicateScanOptions {
+  /** Ignore files smaller than this many bytes. Default 1 (empty files are never reported). */
+  min_size?: number;
+  include_hidden?: boolean;
+  /** Required to scan a sensitive location (a whole drive, the home folder, app data). */
+  confirm_sensitive?: boolean;
+}
+
+/** How the folders chosen for a scan were classified before anything was read. */
+export interface RootCheck {
+  /** OS-critical folders. Never scanned. */
+  protected: string[];
+  /** Allowed, but the user must confirm first. */
+  sensitive: { path: string; reason: string }[];
+  missing: string[];
+}
+
+export type DuplicateScanState = 'running' | 'done' | 'cancelled' | 'failed';
+export type DuplicatePhase = 'walking' | 'comparing' | 'hashing' | 'done';
+
+export interface DuplicateProgress {
+  phase: DuplicatePhase;
+  files_seen: number;
+  bytes_seen: number;
+  /** Files sharing a size with another file; the only ones that may need hashing. */
+  candidate_files: number;
+  hashed_files: number;
+  hashed_bytes: number;
+  total_hash_bytes: number;
+  current_path: string | null;
+}
+
+export interface DuplicateScanStats {
+  files_scanned: number;
+  bytes_scanned: number;
+  candidate_files: number;
+  /** Files read and hashed during this scan. */
+  files_hashed: number;
+  /** Files whose hash was reused from an earlier scan (path, size and modified time unchanged). */
+  files_from_cache: number;
+  bytes_hashed: number;
+  group_count: number;
+  /** Extra copies beyond one per group. */
+  duplicate_files: number;
+  /** Space freed by keeping one copy per group. Each group counted once; hard links free nothing. */
+  reclaimable_bytes: number;
+  /** Files that could not be read or changed during the scan (first 100). */
+  errors: { path: string; error: string }[];
+  error_count: number;
+}
+
+export interface DuplicateScanSummary {
+  scan_id: string;
+  state: DuplicateScanState;
+  roots: string[];
+  progress: DuplicateProgress | null;
+  /** Present once the scan has finished. */
+  stats: DuplicateScanStats | null;
+  /** Why a scan failed. */
+  error: string | null;
+}
+
+export interface DuplicateFile {
+  path: string;
+  name: string;
+  size: number;
+  modified_at: string;
+  /** 'verified' = full SHA-256 computed in this scan; 'cached' = reused from an earlier one. */
+  hash_status: 'verified' | 'cached';
+  /** Files with the same copy_id are hard links to one stored copy (removing one frees no space). */
+  copy_id: number;
+}
+
+export interface DuplicateGroup {
+  /** SHA-256 of the content. */
+  hash: string;
+  size: number;
+  file_count: number;
+  /** Distinct stored copies (hard links count once). */
+  copies: number;
+  total_size: number;
+  reclaimable_bytes: number;
+  /** Oldest first. */
+  files: DuplicateFile[];
+}
+
+export interface DuplicateGroupsPage {
+  groups: DuplicateGroup[];
+  total_groups: number;
+  offset: number;
+}
+
+export type RemoveMode = 'quarantine' | 'trash';
+
+/** For one group, the files to KEEP. Every other file in the group is removed. */
+export interface DuplicateDecision {
+  hash: string;
+  keep: string[];
+}
+
+export interface ResolveDuplicatesResult {
+  operation: Operation | null;
+  removed_count: number;
+  reclaimed_bytes: number;
+  skipped: { path: string; reason: string }[];
+}

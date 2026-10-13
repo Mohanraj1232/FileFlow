@@ -38,6 +38,28 @@ declare global {
       getWatchingStatus: () => Promise<{ watching: boolean }>;
       setTitleBarTheme: (isDark: boolean) => Promise<{ success: boolean }>;
       showOpenDialog: () => Promise<string | null>;
+      checkScanRoots: (roots: string[]) => Promise<import("./lib/types").RootCheck>;
+      startDuplicateScan: (
+        roots: string[],
+        options?: import("./lib/types").DuplicateScanOptions,
+      ) => Promise<import("./lib/types").DuplicateScanSummary>;
+      getDuplicateScan: (scanId: string) => Promise<import("./lib/types").DuplicateScanSummary>;
+      getDuplicateGroups: (
+        scanId: string,
+        offset: number,
+        limit: number,
+      ) => Promise<import("./lib/types").DuplicateGroupsPage>;
+      cancelDuplicateScan: (scanId: string) => Promise<{ cancelled: boolean }>;
+      resolveDuplicates: (
+        scanId: string,
+        decisions: import("./lib/types").DuplicateDecision[],
+        mode: import("./lib/types").RemoveMode,
+      ) => Promise<import("./lib/types").ResolveDuplicatesResult>;
+      revealDuplicateFile: (scanId: string, filePath: string) => Promise<{ success: boolean }>;
+      /** Progress of the running duplicate scan. Returns an unsubscribe function. */
+      onDuplicateProgress: (
+        callback: (summary: import("./lib/types").DuplicateScanSummary) => void,
+      ) => () => void;
       /** Subscribe to files the watcher organized. Returns an unsubscribe function. */
       onFileProcessed: (
         callback: (event: import("./lib/types").FileProcessedEvent) => void,

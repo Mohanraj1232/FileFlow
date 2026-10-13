@@ -80,6 +80,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Dialog
   showOpenDialog: () => ipcRenderer.invoke('show_open_dialog'),
 
+  // Duplicate finder
+  checkScanRoots: (roots: string[]) => ipcRenderer.invoke('check_scan_roots', roots),
+
+  startDuplicateScan: (roots: string[], options?: unknown) =>
+    ipcRenderer.invoke('start_duplicate_scan', roots, options),
+
+  getDuplicateScan: (scanId: string) => ipcRenderer.invoke('get_duplicate_scan', scanId),
+
+  getDuplicateGroups: (scanId: string, offset: number, limit: number) =>
+    ipcRenderer.invoke('get_duplicate_groups', scanId, offset, limit),
+
+  cancelDuplicateScan: (scanId: string) => ipcRenderer.invoke('cancel_duplicate_scan', scanId),
+
+  resolveDuplicates: (scanId: string, decisions: unknown, mode: string) =>
+    ipcRenderer.invoke('resolve_duplicates', scanId, decisions, mode),
+
+  revealDuplicateFile: (scanId: string, filePath: string) =>
+    ipcRenderer.invoke('reveal_duplicate_file', scanId, filePath),
+
+  onDuplicateProgress: (callback: (data: any) => void) => {
+    const listener = (_event: unknown, data: unknown) => callback(data);
+    ipcRenderer.on('duplicate-progress', listener);
+    return () => ipcRenderer.removeListener('duplicate-progress', listener);
+  },
+
   // Event listeners for renderer
   onFileProcessed: (callback: (data: any) => void) => {
     const listener = (_event: unknown, data: unknown) => callback(data);
