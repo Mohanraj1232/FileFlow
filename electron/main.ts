@@ -13,6 +13,7 @@ import { processWatchedFile } from './core/pipeline';
 import { loadRules, getSetting } from './core/rules-repo';
 import { managedDirs, isInManagedDir } from './core/planner';
 import { compileIgnore, parseIgnorePatterns } from './core/ignore';
+import { protectAppDataDir } from './core/paths';
 import type { FileProcessedEvent } from './shared/contract';
 
 let mainWindow: BrowserWindow | null = null;
@@ -156,6 +157,9 @@ async function shutdown(): Promise<void> {
 // ===== App lifecycle =====
 
 app.whenReady().then(() => {
+  // FileFlow's own data folder (database, backups) must never be scanned or modified.
+  protectAppDataDir(app.getPath('userData'));
+
   // Initialize database (runs pending migrations, backing up first)
   db = initDb(app.getPath('userData'));
 

@@ -5,7 +5,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['electron/**/*.test.ts'],
+    include: ['electron/**/*.test.ts', 'src/**/*.test.ts'],
     // Real filesystem + SQLite work; run files one after another for stable temp dirs.
     pool: 'forks',
     poolOptions: { forks: { singleFork: true } },

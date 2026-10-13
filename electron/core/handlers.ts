@@ -1,4 +1,4 @@
-import { ipcMain, dialog } from 'electron';
+import { ipcMain, dialog, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { extensionToKind } from './models';
@@ -26,9 +26,19 @@ import {
   PlanCache,
   type FolderRow,
 } from './organizer';
-import { parseIgnorePatterns } from './ignore';
+import { parseIgnorePatterns, compileIgnore } from './ignore';
+import { checkRoots } from './paths';
+import { DuplicateScanStore } from './duplicates/store';
+import { resolveDuplicates, InvalidDecisionError, type Decision } from './duplicates/resolve';
+import { toSummaryDto, toGroupDto } from './duplicates/dto';
 import { normalizePolicy } from './planner';
-import type { DashboardStats, TestRuleResult } from '../shared/contract';
+import type {
+  DashboardStats,
+  TestRuleResult,
+  DuplicateScanOptions,
+  DuplicateGroupsPage,
+  ResolveDuplicatesResult,
+} from '../shared/contract';
 
 const SETTING_KEYS = [
   'conflict_default',
@@ -70,6 +80,36 @@ function validateSetting(key: string, value: string): string {
     default:
       return value;
   }
+}
+
+const MAX_SCAN_ROOTS = 20;
+
+/** Validate the folder list sent by the renderer: strings only, absolute, unique. */
+function validateRoots(roots: unknown): string[] {
+  if (!Array.isArray(roots) || roots.length === 0) throw new Error('Choose at least one folder to scan.');
+  if (roots.length > MAX_SCAN_ROOTS) throw new Error(`Choose at most ${MAX_SCAN_ROOTS} folders.`);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const r of roots) {
+    if (typeof r !== 'string' || !r.trim()) throw new Error('Invalid folder path.');
+    const abs = path.resolve(r);
+    const key = process.platform === 'win32' || process.platform === 'darwin' ? abs.toLowerCase() : abs;
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(abs);
+    }
+  }
+  return out;
+}
+
+function validateDecisions(decisions: unknown): Decision[] {
+  if (!Array.isArray(decisions) || decisions.length === 0) throw new Error('Nothing selected to remove.');
+  return decisions.map((d: any) => {
+    if (!d || typeof d.hash !== 'string' || !Array.isArray(d.keep) || d.keep.some((k: unknown) => typeof k !== 'string')) {
+      throw new Error('Invalid selection.');
+    }
+    return { hash: d.hash, keep: d.keep as string[] };
+  });
 }
 
 /** Evaluate a file *name* against rules, without touching any file. */
@@ -124,6 +164,7 @@ export function registerHandlers(
   getMainWindow: () => any
 ): void {
   const planCache = new PlanCache();
+  const dupStore = new DuplicateScanStore();
 
   // ===== Watched Folders =====
 
@@ -350,5 +391,101 @@ export function registerHandlers(
     const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
     if (result.canceled || result.filePaths.length === 0) return null;
     return result.filePaths[0];
+  });
+
+  // ===== Duplicate finder =====
+
+  const pushProgress = (entry: Parameters<typeof toSummaryDto>[0]) => {
+    const win = getMainWindow();
+    if (win && !win.isDestroyed()) win.webContents.send('duplicate-progress', toSummaryDto(entry));
+  };
+
+  const getScan = (scanId: unknown) => {
+    const entry = typeof scanId === 'string' ? dupStore.get(scanId) : undefined;
+    if (!entry) throw new Error('That scan is no longer available. Run a new scan.');
+    return entry;
+  };
+
+  ipcMain.handle('check_scan_roots', (_event, roots: string[]) => checkRoots(validateRoots(roots)));
+
+  ipcMain.handle('start_duplicate_scan', (_event, roots: string[], options?: DuplicateScanOptions) => {
+    const list = validateRoots(roots);
+    const check = checkRoots(list);
+    if (check.missing.length) throw new Error(`Folder not found: ${check.missing[0]}`);
+    if (check.protected.length) {
+      throw new Error(`FileFlow does not scan system folders: ${check.protected.join(', ')}`);
+    }
+    if (check.sensitive.length && !options?.confirm_sensitive) {
+      throw new Error(`Confirmation required to scan: ${check.sensitive.map((s) => s.path).join(', ')}`);
+    }
+
+    const minSize = Number(options?.min_size);
+    const entry = dupStore.start({
+      roots: list,
+      db,
+      minSize: Number.isFinite(minSize) && minSize >= 1 ? Math.floor(minSize) : 1,
+      includeHidden: !!options?.include_hidden,
+      isIgnored: compileIgnore(parseIgnorePatterns(repo.getSetting(db, 'ignore_patterns'))),
+      onUpdate: pushProgress,
+    });
+    return toSummaryDto(entry);
+  });
+
+  ipcMain.handle('get_duplicate_scan', (_event, scanId: string) => toSummaryDto(getScan(scanId)));
+
+  ipcMain.handle(
+    'get_duplicate_groups',
+    (_event, scanId: string, offset: number = 0, limit: number = 50): DuplicateGroupsPage => {
+      const entry = getScan(scanId);
+      if (entry.state !== 'done' || !entry.result) throw new Error('This scan has no results to show.');
+      const start = Math.max(0, Math.floor(Number(offset)) || 0);
+      const size = Math.min(200, Math.max(1, Math.floor(Number(limit)) || 50));
+      return {
+        groups: entry.result.groups.slice(start, start + size).map(toGroupDto),
+        total_groups: entry.result.groups.length,
+        offset: start,
+      };
+    }
+  );
+
+  ipcMain.handle('cancel_duplicate_scan', (_event, scanId: string) => ({
+    cancelled: dupStore.cancel(String(scanId)),
+  }));
+
+  ipcMain.handle(
+    'resolve_duplicates',
+    async (_event, scanId: string, decisions: unknown, mode: string): Promise<ResolveDuplicatesResult> => {
+      const entry = getScan(scanId);
+      try {
+        const out = await resolveDuplicates(
+          db,
+          entry,
+          validateDecisions(decisions),
+          mode as 'quarantine' | 'trash',
+          recentlyWritten
+        );
+        return {
+          operation:
+            out.operationId === null
+              ? null
+              : db.prepare('SELECT * FROM operations WHERE id = ?').get(out.operationId),
+          removed_count: out.removed.length,
+          reclaimed_bytes: out.reclaimedBytes,
+          skipped: out.skipped,
+        };
+      } catch (err) {
+        if (err instanceof InvalidDecisionError) throw new Error(err.message);
+        throw err;
+      }
+    }
+  );
+
+  // Only files this scan actually found can be revealed: the renderer cannot ask to open arbitrary paths.
+  ipcMain.handle('reveal_duplicate_file', (_event, scanId: string, filePath: string) => {
+    const entry = getScan(scanId);
+    const known = entry.result?.groups.some((g) => g.files.some((f) => f.path === filePath));
+    if (!known) throw new Error('That file is not part of this scan.');
+    shell.showItemInFolder(filePath);
+    return { success: true };
   });
 }

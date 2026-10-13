@@ -19,7 +19,8 @@ interface PlanRule {
 // checks them against the renderer's types; a naming mismatch here silently
 // shows up as blank/undefined fields in the UI instead of a compile error).
 export interface PlannedStep {
-  rule_id: number;
+  /** Null for operations that don't come from a rule (e.g. duplicate cleanup). */
+  rule_id: number | null;
   rule_name: string;
   /** 'skip' steps are informational only: they are never executed or journaled. */
   action_type: 'move' | 'copy' | 'rename' | 'trash' | 'skip';

@@ -1,14 +1,41 @@
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 
-/** Streaming SHA-256 of a whole file; never loads the file into memory. */
-export function hashFile(filePath: string): Promise<string> {
+/** Thrown (as a rejection) when a hash is abandoned because the caller cancelled. */
+export class HashAbortedError extends Error {
+  constructor() {
+    super('Hashing was cancelled');
+    this.name = 'HashAbortedError';
+  }
+}
+
+/**
+ * Streaming SHA-256 of a whole file; never loads the file into memory.
+ * An optional AbortSignal closes the stream early so long hashes can be cancelled.
+ */
+export function hashFile(filePath: string, signal?: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new HashAbortedError());
+
     const hash = crypto.createHash('sha256');
     const stream = fs.createReadStream(filePath);
-    stream.on('error', reject);
+
+    const onAbort = () => {
+      stream.destroy();
+      reject(new HashAbortedError());
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+    const done = () => signal?.removeEventListener('abort', onAbort);
+
+    stream.on('error', (err) => {
+      done();
+      reject(err);
+    });
     stream.on('data', (chunk) => hash.update(chunk));
-    stream.on('end', () => resolve(hash.digest('hex')));
+    stream.on('end', () => {
+      done();
+      resolve(hash.digest('hex'));
+    });
   });
 }
 
