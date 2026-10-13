@@ -11,6 +11,13 @@ import type {
   TestRuleResult,
   ApplyResult,
   FileProcessedEvent,
+  DuplicateScanOptions,
+  DuplicateScanSummary,
+  DuplicateGroupsPage,
+  DuplicateDecision,
+  RemoveMode,
+  ResolveDuplicatesResult,
+  RootCheck,
 } from "./types";
 
 export async function getWatchedFolders(): Promise<WatchedFolder[]> {
@@ -155,4 +162,52 @@ export async function getWatchingStatus(): Promise<{ watching: boolean }> {
 
 export async function setTitleBarTheme(isDark: boolean): Promise<void> {
   await window.electronAPI.setTitleBarTheme(isDark);
+}
+
+// ---- Duplicate finder ----------------------------------------------------
+
+export async function checkScanRoots(roots: string[]): Promise<RootCheck> {
+  return window.electronAPI.checkScanRoots(roots);
+}
+
+export async function startDuplicateScan(
+  roots: string[],
+  options?: DuplicateScanOptions,
+): Promise<DuplicateScanSummary> {
+  return window.electronAPI.startDuplicateScan(roots, options);
+}
+
+export async function getDuplicateScan(scanId: string): Promise<DuplicateScanSummary> {
+  return window.electronAPI.getDuplicateScan(scanId);
+}
+
+export async function getDuplicateGroups(
+  scanId: string,
+  offset: number,
+  limit: number,
+): Promise<DuplicateGroupsPage> {
+  return window.electronAPI.getDuplicateGroups(scanId, offset, limit);
+}
+
+export async function cancelDuplicateScan(scanId: string): Promise<{ cancelled: boolean }> {
+  return window.electronAPI.cancelDuplicateScan(scanId);
+}
+
+/** Remove the unwanted copies. `keep` lists the files to KEEP in each group; the rest are removed. */
+export async function resolveDuplicates(
+  scanId: string,
+  decisions: DuplicateDecision[],
+  mode: RemoveMode,
+): Promise<ResolveDuplicatesResult> {
+  return window.electronAPI.resolveDuplicates(scanId, decisions, mode);
+}
+
+export async function revealDuplicateFile(scanId: string, filePath: string): Promise<void> {
+  await window.electronAPI.revealDuplicateFile(scanId, filePath);
+}
+
+export function onDuplicateProgress(
+  callback: (summary: DuplicateScanSummary) => void,
+): () => void {
+  return window.electronAPI.onDuplicateProgress(callback);
 }

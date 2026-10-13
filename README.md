@@ -15,6 +15,7 @@ Built with Electron, React, TypeScript and SQLite. It runs on Windows, macOS and
 - **Folder watching.** New files are detected automatically. FileFlow waits for a file to finish writing before touching it, and it ignores in-progress downloads (`.crdownload`, `.part`, `.tmp` and similar).
 - **Preview before you apply.** Run a dry run to see exactly what would move and where, then apply it. Apply runs the plan you reviewed, and each step is re-checked against the disk first.
 - **History and undo.** Every operation is recorded. Undo a whole batch or a single step.
+- **Duplicate finder.** Scan any folders for files with identical contents (a full SHA-256 comparison, never names or sizes alone), review the groups, choose what to keep, and move the extra copies to a quarantine folder (undoable) or the system trash. Nothing is selected for you until you ask.
 - **Unsorted inbox.** Files that match no rule are left alone. You can review them later, with no popups.
 - **Local only.** There is no telemetry, no account and no cloud. Your data lives in a local SQLite database.
 
@@ -62,6 +63,15 @@ A file tool that loses files is worse than no tool, so these rules are built in 
 11. **Database upgrades keep a backup.** Before an existing database is migrated, a copy is saved next to it as `fileflow.db.bak-v<version>`.
 
 Moving a file to the Trash cannot be undone from inside FileFlow; restore it from the system Recycle Bin or Trash.
+
+### Duplicate finder safety
+
+- A group always keeps at least one file, and the app (not just the screen) enforces it.
+- Before anything is removed, a kept copy is read from disk again and must still match; if none does, that whole group is left alone.
+- Every file to remove is re-checked (size, modified time and a fresh SHA-256) right before it is touched. Cached hashes only speed up finding duplicates; they are never trusted for removal.
+- Hard links to the same data are recognised: removing one frees no space, so they are not counted and not removed.
+- Symlinks are never followed. System folders (Windows, Program Files, `/System`, `/etc`, ...) and FileFlow's own data folder are never scanned. Scanning a whole drive, your home folder, or application-data folders asks for confirmation first.
+- Quarantined files live in a `FileFlow Quarantine` folder next to the originals (same drive, so it is instant) and can be restored from **History**.
 
 ---
 
@@ -172,7 +182,6 @@ The backend tests use Vitest and run under Electron's own Node, so the native `b
 Some items below are in the design but not yet implemented. In particular, the settings screen does not yet offer a scan schedule or notification level because those are not wired up yet.
 
 - Age-based rules (`created_age`, `modified_age`) for scheduled scans
-- Duplicate detection with content hashing
 - Protected-path checks that refuse to watch system folders
 - System tray, autostart and auto-update
 - Rule templates (for example Student, Developer, Designer)
