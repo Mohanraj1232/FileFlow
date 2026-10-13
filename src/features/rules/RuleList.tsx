@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Pencil, Trash2, ListFilter, GripVertical } from "lucide-react";
+import { Plus, Pencil, Trash2, ListFilter, ChevronUp, ChevronDown } from "lucide-react";
 import type { Rule, Condition, ConditionGroup } from "../../lib/types";
-import { getRules, deleteRule, toggleRule } from "../../lib/commands";
+import { getRules, deleteRule, toggleRule, reorderRules } from "../../lib/commands";
 import Toggle from "../../components/Toggle";
 import EmptyState from "../../components/EmptyState";
 import Modal from "../../components/Modal";
@@ -12,6 +12,8 @@ import PageHeader from "../../components/ui/PageHeader";
 import { Card } from "../../components/ui/Card";
 import { Table, THead, Th, TRow, Td } from "../../components/ui/Table";
 import { LoadingState } from "../../components/ui/Spinner";
+import { useToast } from "../../components/Toast";
+import { errorMessage } from "../../lib/errors";
 
 function summarizeCondition(cond: Condition): string {
   if ("all" in cond) {
@@ -29,6 +31,7 @@ function summarizeCondition(cond: Condition): string {
 
 export default function RuleList() {
   const navigate = useNavigate();
+  const { addToast } = useToast();
   const [rules, setRules] = useState<Rule[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<Rule | null>(null);
@@ -74,6 +77,21 @@ export default function RuleList() {
     }
   }
 
+  // Rules are tried top to bottom and the first match wins, so order is priority.
+  async function handleMove(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= rules.length) return;
+    const next = [...rules];
+    [next[index], next[target]] = [next[target], next[index]];
+    setRules(next); // optimistic
+    try {
+      setRules(await reorderRules(next.map((r) => r.id as number)));
+    } catch (e) {
+      addToast({ type: "error", text: `Could not reorder rules: ${errorMessage(e)}` });
+      loadRules();
+    }
+  }
+
   if (loading) return <LoadingState />;
 
   return (
@@ -107,7 +125,7 @@ export default function RuleList() {
           <Table>
             <THead>
               <tr>
-                <Th className="w-8" />
+                <Th className="w-10" />
                 <Th className="w-56">Rule</Th>
                 <Th>Conditions</Th>
                 <Th className="w-20 text-center">Priority</Th>
@@ -116,10 +134,29 @@ export default function RuleList() {
               </tr>
             </THead>
             <tbody>
-              {rules.map((rule) => (
+              {rules.map((rule, index) => (
                 <TRow key={rule.id}>
                   <Td>
-                    <GripVertical size={14} className="cursor-grab text-fg-subtle" />
+                    <div className="flex flex-col">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        iconOnly
+                        aria-label={`Move ${rule.name} up`}
+                        disabled={index === 0}
+                        icon={<ChevronUp size={12} />}
+                        onClick={() => handleMove(index, -1)}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        iconOnly
+                        aria-label={`Move ${rule.name} down`}
+                        disabled={index === rules.length - 1}
+                        icon={<ChevronDown size={12} />}
+                        onClick={() => handleMove(index, 1)}
+                      />
+                    </div>
                   </Td>
                   <Td>
                     <div className="flex min-w-0 items-center gap-2">

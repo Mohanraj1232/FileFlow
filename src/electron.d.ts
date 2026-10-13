@@ -13,10 +13,18 @@ declare global {
       updateRule: (rule: import("./lib/types").Rule) => Promise<import("./lib/types").Rule>;
       deleteRule: (id: number) => Promise<void>;
       toggleRule: (id: number, enabled: boolean) => Promise<void>;
-      reorderRules: (ruleIds: number[]) => Promise<void>;
-      testRule: (filename: string, ruleId?: number) => Promise<{ matched: boolean; rule_name?: string; destination?: string }>;
+      reorderRules: (ruleIds: number[]) => Promise<import("./lib/types").Rule[]>;
+      testRule: (
+        filename: string,
+        ruleId: number | null,
+        draft?: import("./lib/types").Rule,
+      ) => Promise<import("./lib/types").TestRuleResult>;
       previewFolder: (folderId: number) => Promise<import("./lib/types").PlanSummary>;
-      applyPlan: (folderId: number, selectedPaths: string[]) => Promise<import("./lib/types").Operation>;
+      applyPlan: (
+        folderId: number,
+        planId: string,
+        selectedFileKeys: string[] | null,
+      ) => Promise<import("./lib/types").ApplyResult>;
       getOperations: (limit: number, offset: number) => Promise<import("./lib/types").Operation[]>;
       getOperationSteps: (operationId: number) => Promise<import("./lib/types").OperationStep[]>;
       undoOperation: (operationId: number) => Promise<import("./lib/types").UndoResult>;
@@ -30,6 +38,10 @@ declare global {
       getWatchingStatus: () => Promise<{ watching: boolean }>;
       setTitleBarTheme: (isDark: boolean) => Promise<{ success: boolean }>;
       showOpenDialog: () => Promise<string | null>;
+      /** Subscribe to files the watcher organized. Returns an unsubscribe function. */
+      onFileProcessed: (
+        callback: (event: import("./lib/types").FileProcessedEvent) => void,
+      ) => () => void;
     };
   }
 }

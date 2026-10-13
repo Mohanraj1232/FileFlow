@@ -1,9 +1,10 @@
-const chokidar = require('chokidar');
-const fs = require('node:fs');
-const path = require('node:path');
+import chokidar, { type FSWatcher } from 'chokidar';
+import fs from 'node:fs';
+import path from 'node:path';
+import { pathKey } from './planner';
 
 /** File extensions for temporary/incomplete downloads */
-const TEMP_EXTENSIONS = [
+export const TEMP_EXTENSIONS = [
   'crdownload',
   'part',
   'partial',
@@ -13,7 +14,25 @@ const TEMP_EXTENSIONS = [
 ];
 
 /** OS-generated files to always ignore */
-const IGNORED_FILES = ['.DS_Store', 'desktop.ini', 'Thumbs.db'];
+export const IGNORED_FILES = ['.DS_Store', 'desktop.ini', 'Thumbs.db'];
+
+/** Directory names never worth descending into (watching or scanning). */
+export const IGNORED_DIRS = new Set([
+  'node_modules',
+  '.git',
+  'dist',
+  'dist-electron',
+  'build',
+  'release',
+  '__pycache__',
+  'vendor',
+  'Pods',
+  'DerivedData',
+  '.build',
+]);
+
+/** How deep a recursive watched folder is traversed (EMFILE protection). */
+export const RECURSIVE_WATCH_DEPTH = 3;
 
 /**
  * Shared watching-enabled state. This is the single source of truth for
@@ -23,18 +42,18 @@ const IGNORED_FILES = ['.DS_Store', 'desktop.ini', 'Thumbs.db'];
  */
 let watchingEnabled = false;
 
-function isWatchingEnabled(): boolean {
+export function isWatchingEnabled(): boolean {
   return watchingEnabled;
 }
 
-function setWatchingEnabled(enabled: boolean): void {
+export function setWatchingEnabled(enabled: boolean): void {
   watchingEnabled = enabled;
 }
 
 /**
  * Check if a file should be ignored by the watcher.
  */
-function shouldIgnoreFile(filePath: string): boolean {
+export function shouldIgnoreFile(filePath: string): boolean {
   const baseName = path.basename(filePath);
 
   // Check ignored OS files
@@ -58,27 +77,22 @@ function shouldIgnoreFile(filePath: string): boolean {
 
 /**
  * Check if a file has stabilized (finished writing).
- * Reads size/mtime, waits 2 seconds, re-checks, and verifies the file can be opened.
+ * Reads size/mtime, waits, re-checks, and verifies the file can be opened.
  */
-async function isFileStable(filePath: string): Promise<boolean> {
+export async function isFileStable(filePath: string, waitMs = 2000): Promise<boolean> {
   try {
     const stat1 = fs.statSync(filePath);
     const size1 = stat1.size;
     const mtime1 = stat1.mtimeMs;
 
-    // Wait 2 seconds
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
 
-    // Re-check
     if (!fs.existsSync(filePath)) {
       return false;
     }
 
     const stat2 = fs.statSync(filePath);
-    const size2 = stat2.size;
-    const mtime2 = stat2.mtimeMs;
-
-    if (size1 !== size2 || mtime1 !== mtime2) {
+    if (size1 !== stat2.size || mtime1 !== stat2.mtimeMs) {
       return false;
     }
 
@@ -101,9 +115,9 @@ async function isFileStable(filePath: string): Promise<boolean> {
 
 /**
  * Tracks recently written files to prevent re-processing files that
- * FileFlow itself just created/moved.
+ * FileFlow itself just created/moved/restored.
  */
-class RecentlyWritten {
+export class RecentlyWritten {
   private map: Map<string, number>;
   private ttlMs: number;
 
@@ -112,32 +126,25 @@ class RecentlyWritten {
     this.ttlMs = ttlMs;
   }
 
-  /**
-   * Register a file path as recently written.
-   */
+  /** Register a file path as recently written. */
   add(filePath: string): void {
-    const normalized = filePath.replace(/\\/g, '/');
-    this.map.set(normalized, Date.now());
+    this.map.set(pathKey(filePath), Date.now());
   }
 
-  /**
-   * Check whether a file path was recently written by FileFlow.
-   */
+  /** Check whether a file path was recently written by FileFlow. */
   contains(filePath: string): boolean {
-    const normalized = filePath.replace(/\\/g, '/');
-    const timestamp = this.map.get(normalized);
+    const key = pathKey(filePath);
+    const timestamp = this.map.get(key);
     if (timestamp === undefined) return false;
 
     if (Date.now() - timestamp > this.ttlMs) {
-      this.map.delete(normalized);
+      this.map.delete(key);
       return false;
     }
     return true;
   }
 
-  /**
-   * Remove expired entries.
-   */
+  /** Remove expired entries. */
   cleanup(): void {
     const cutoff = Date.now() - this.ttlMs;
     for (const [key, timestamp] of this.map.entries()) {
@@ -148,91 +155,127 @@ class RecentlyWritten {
   }
 }
 
-/**
- * Create a chokidar watcher instance.
- *
- * @param onFile - Callback invoked for each new/changed file path
- * @returns The chokidar watcher instance
- */
-function createWatcher(
-  onFile: (filePath: string) => void | Promise<void>
-): any {
-  const watcher = chokidar.watch([], {
-    persistent: true,
-    ignoreInitial: true,
-    depth: 1,
-    awaitWriteFinish: {
-      stabilityThreshold: 2000,
-      pollInterval: 500,
-    },
-    ignored: [
-      /(^|[/\\])\../,
-      '**/node_modules/**',
-      '**/.git/**',
-      '**/dist/**',
-      '**/dist-electron/**',
-      '**/build/**',
-      '**/release/**',
-      '**/__pycache__/**',
-      '**/vendor/**',
-      '**/Pods/**',
-      '**/DerivedData/**',
-      '**/.build/**',
-      '**/desktop.ini',
-      '**/Thumbs.db',
-      '**/.DS_Store',
-    ],
-  });
+export interface WatchTarget {
+  id: number;
+  path: string;
+  recursive: boolean;
+}
 
-  // Serialize file processing: chokidar fires 'add'/'change' independently
-  // per file, but onFile() plans against filesystem/DB state that must not
-  // be read concurrently by two in-flight calls (two files landing close
-  // together could otherwise plan to the same destination name and one
-  // would silently overwrite the other). Chain every call onto a single
-  // promise so they run strictly one at a time.
-  let queue: Promise<void> = Promise.resolve();
-  const enqueue = (filePath: string) => {
-    queue = queue
-      .then(() => onFile(filePath))
+export type OnWatchedFile = (filePath: string, folder: WatchTarget) => void | Promise<void>;
+
+/**
+ * Loop circuit breaker: if the same path is reported more than `max` times in
+ * `windowMs`, something is feeding its own output back in. Stop processing it.
+ */
+export class LoopGuard {
+  private hits = new Map<string, number[]>();
+
+  constructor(
+    private max = 3,
+    private windowMs = 10 * 60 * 1000
+  ) {}
+
+  /** Returns true when this path is allowed through. */
+  allow(filePath: string, now = Date.now()): boolean {
+    const key = pathKey(filePath);
+    const recent = (this.hits.get(key) ?? []).filter((t) => now - t < this.windowMs);
+    if (recent.length >= this.max) {
+      this.hits.set(key, recent);
+      return false;
+    }
+    recent.push(now);
+    this.hits.set(key, recent);
+    return true;
+  }
+}
+
+/**
+ * Owns one chokidar watcher per watched folder, so each folder gets its own
+ * depth (top level only, or a bounded recursion) and can be removed
+ * independently. All detected files go through a single serialized queue.
+ */
+export class WatcherManager {
+  private watchers = new Map<string, { watcher: FSWatcher; folder: WatchTarget }>();
+  private queue: Promise<void> = Promise.resolve();
+  private guard = new LoopGuard();
+
+  constructor(
+    private onFile: OnWatchedFile,
+    private shouldIgnore?: (filePath: string, folder: WatchTarget) => boolean
+  ) {}
+
+  /** Start watching a folder (no-op if it is already watched). */
+  add(folder: WatchTarget): void {
+    const key = pathKey(folder.path);
+    if (this.watchers.has(key)) return;
+
+    const watcher = chokidar.watch(folder.path, {
+      persistent: true,
+      ignoreInitial: true,
+      followSymlinks: false,
+      depth: folder.recursive ? RECURSIVE_WATCH_DEPTH : 0,
+      awaitWriteFinish: {
+        stabilityThreshold: 2000,
+        pollInterval: 500,
+      },
+      // chokidar v4 has no glob support, so ignore rules are a function.
+      ignored: (p: string) => {
+        const base = path.basename(p);
+        if (p !== folder.path && base.startsWith('.')) return true;
+        if (IGNORED_DIRS.has(base)) return true;
+        if (this.shouldIgnore && p !== folder.path && this.shouldIgnore(p, folder)) return true;
+        return false;
+      },
+    });
+
+    // Serialize processing: two files landing close together must not be
+    // planned concurrently, or both could pick the same destination name.
+    // Only 'add' is handled — a 'change' on an already-sorted file must not
+    // send it round the pipeline again.
+    watcher.on('add', (filePath: string) => this.enqueue(filePath, folder));
+    watcher.on('error', (err: unknown) => {
+      console.error(`Watcher error in ${folder.path}:`, err);
+    });
+
+    this.watchers.set(key, { watcher, folder });
+  }
+
+  /** Stop watching a folder. */
+  async remove(folderPath: string): Promise<void> {
+    const key = pathKey(folderPath);
+    const entry = this.watchers.get(key);
+    if (!entry) return;
+    this.watchers.delete(key);
+    await entry.watcher.close();
+  }
+
+  async close(): Promise<void> {
+    const all = [...this.watchers.values()];
+    this.watchers.clear();
+    await Promise.all(all.map((e) => e.watcher.close()));
+  }
+
+  /** Number of folders currently watched. */
+  get size(): number {
+    return this.watchers.size;
+  }
+
+  private enqueue(filePath: string, folder: WatchTarget): void {
+    if (!this.guard.allow(filePath)) {
+      console.warn(`Loop guard: ignoring ${filePath} (reported too often)`);
+      return;
+    }
+    this.queue = this.queue
+      .then(() => this.onFile(filePath, folder))
       .catch((err) => {
         console.error(`Error processing watched file ${filePath}:`, err);
       });
-  };
-
-  watcher.on('add', (filePath: string) => {
-    enqueue(filePath);
-  });
-
-  watcher.on('change', (filePath: string) => {
-    enqueue(filePath);
-  });
-
-  return watcher;
+  }
 }
 
-/**
- * Add a folder path to an existing watcher.
- */
-function watchFolder(watcher: any, folderPath: string): void {
-  watcher.add(folderPath);
+export function createWatcher(
+  onFile: OnWatchedFile,
+  shouldIgnore?: (filePath: string, folder: WatchTarget) => boolean
+): WatcherManager {
+  return new WatcherManager(onFile, shouldIgnore);
 }
-
-/**
- * Remove a folder path from an existing watcher.
- */
-function unwatchFolder(watcher: any, folderPath: string): void {
-  watcher.unwatch(folderPath);
-}
-
-module.exports = {
-  TEMP_EXTENSIONS,
-  IGNORED_FILES,
-  shouldIgnoreFile,
-  isFileStable,
-  RecentlyWritten,
-  createWatcher,
-  watchFolder,
-  unwatchFolder,
-  isWatchingEnabled,
-  setWatchingEnabled,
-};

@@ -1,8 +1,8 @@
-const fs = require('node:fs');
-const path = require('node:path');
-const journal = require('./journal');
+import fs from 'node:fs';
+import * as journal from './journal';
+import { executeMove, executeTrash, type WrittenTracker } from './executor';
 
-interface UndoResult {
+export interface UndoResult {
   success: boolean;
   steps_undone: number;
   steps_skipped: number;
@@ -10,44 +10,15 @@ interface UndoResult {
 }
 
 /**
- * Move a file back to its original location with cross-device fallback.
- */
-function moveBack(src: string, dst: string): void {
-  const dstDir = path.dirname(dst);
-  if (!fs.existsSync(dstDir)) {
-    fs.mkdirSync(dstDir, { recursive: true });
-  }
-
-  try {
-    fs.renameSync(src, dst);
-  } catch (err: any) {
-    if (err.code === 'EXDEV') {
-      fs.copyFileSync(src, dst);
-      const srcStat = fs.statSync(src);
-      const dstStat = fs.statSync(dst);
-      if (srcStat.size !== dstStat.size) {
-        try {
-          fs.unlinkSync(dst);
-        } catch {
-          // ignore cleanup error
-        }
-        throw new Error(
-          `Cross-device undo move verification failed: size mismatch`
-        );
-      }
-      fs.unlinkSync(src);
-    } else {
-      throw err;
-    }
-  }
-}
-
-/**
  * Undo a single step. Returns whether the undo succeeded and any error.
+ *
+ * Restored files are registered with `recentlyWritten` so the folder watcher
+ * does not immediately pick the file back up and re-sort it.
  */
 async function undoSingleStep(
   db: any,
-  step: any
+  step: any,
+  recentlyWritten?: WrittenTracker | null
 ): Promise<{ success: boolean; error?: string }> {
   switch (step.action_type) {
     case 'move':
@@ -83,7 +54,9 @@ async function undoSingleStep(
       }
 
       try {
-        moveBack(step.dst_path, step.src_path);
+        // Register first: the watcher may see the file the instant it lands.
+        recentlyWritten?.add(step.src_path);
+        await executeMove(step.dst_path, step.src_path);
         journal.markStepUndone(db, step.id);
         return { success: true };
       } catch (err: any) {
@@ -116,9 +89,7 @@ async function undoSingleStep(
 
       // Trash the copy
       try {
-        const trashModule = await import('trash');
-        const trashFn = trashModule.default || trashModule;
-        await trashFn([step.dst_path]);
+        await executeTrash(step.dst_path);
         journal.markStepUndone(db, step.id);
         return { success: true };
       } catch (err: any) {
@@ -129,7 +100,7 @@ async function undoSingleStep(
     case 'trash': {
       return {
         success: false,
-        error: 'Cannot undo trash operations',
+        error: 'Cannot undo trash operations — restore the file from the system Recycle Bin / Trash',
       };
     }
 
@@ -144,7 +115,11 @@ async function undoSingleStep(
 /**
  * Undo an entire operation — reverse all done steps in reverse order.
  */
-async function undoOperation(db: any, operationId: number): Promise<UndoResult> {
+export async function undoOperation(
+  db: any,
+  operationId: number,
+  recentlyWritten?: WrittenTracker | null
+): Promise<UndoResult> {
   const steps = journal.getOperationSteps(db, operationId);
   const result: UndoResult = {
     success: true,
@@ -165,7 +140,7 @@ async function undoOperation(db: any, operationId: number): Promise<UndoResult> 
   }
 
   for (const step of doneSteps) {
-    const stepResult = await undoSingleStep(db, step);
+    const stepResult = await undoSingleStep(db, step, recentlyWritten);
     if (stepResult.success) {
       result.steps_undone++;
     } else {
@@ -194,7 +169,11 @@ async function undoOperation(db: any, operationId: number): Promise<UndoResult> 
 /**
  * Undo a single step by step ID.
  */
-async function undoStep(db: any, stepId: number): Promise<UndoResult> {
+export async function undoStep(
+  db: any,
+  stepId: number,
+  recentlyWritten?: WrittenTracker | null
+): Promise<UndoResult> {
   const step = journal.getStepById(db, stepId);
   if (!step) {
     return {
@@ -214,7 +193,7 @@ async function undoStep(db: any, stepId: number): Promise<UndoResult> {
     };
   }
 
-  const stepResult = await undoSingleStep(db, step);
+  const stepResult = await undoSingleStep(db, step, recentlyWritten);
   return {
     success: stepResult.success,
     steps_undone: stepResult.success ? 1 : 0,
@@ -222,5 +201,3 @@ async function undoStep(db: any, stepId: number): Promise<UndoResult> {
     errors: stepResult.error ? [stepResult.error] : [],
   };
 }
-
-module.exports = { undoOperation, undoStep };

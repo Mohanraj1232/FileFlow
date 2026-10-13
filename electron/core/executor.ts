@@ -1,94 +1,119 @@
-const fs = require('node:fs');
-const path = require('node:path');
-const journal = require('./journal');
+import fs from 'node:fs';
+import path from 'node:path';
+import * as journal from './journal';
+import { hashFile } from './hash';
+import { resolveConflict, samePath, type PlannedStep } from './planner';
 
-interface PlannedStep {
-  rule_id: number;
-  rule_name: string;
-  action_type: string;
-  src_path: string;
-  dst_path: string | null;
-  file_size: number;
-  file_mtime: string;
-  selected: boolean;
+/** Minimal surface of the RecentlyWritten tracker the executor needs. */
+export interface WrittenTracker {
+  add(filePath: string): void;
+}
+
+function ensureDir(dir: string): void {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
 }
 
 /**
- * Execute a move operation with cross-device fallback.
- * If fs.renameSync fails (EXDEV — cross-device link), falls back to
- * copy + verify + delete.
+ * Move a file without ever replacing an existing one.
+ *
+ * Same-volume moves use rename. A cross-device move (EXDEV) copies with
+ * COPYFILE_EXCL, verifies the copy by SHA-256 (size alone can miss corruption),
+ * preserves the modification time, and only then removes the original.
+ *
+ * Callers are responsible for checking that `dst` is free first; the EXCL
+ * flag on the copy path is a second line of defence, not the only one.
  */
-function executeMove(src: string, dst: string): void {
-  const dstDir = path.dirname(dst);
-  if (!fs.existsSync(dstDir)) {
-    fs.mkdirSync(dstDir, { recursive: true });
-  }
+export async function executeMove(src: string, dst: string): Promise<void> {
+  ensureDir(path.dirname(dst));
 
   try {
     fs.renameSync(src, dst);
   } catch (err: any) {
-    if (err.code === 'EXDEV') {
-      // Cross-device: copy, verify, then remove original
-      fs.copyFileSync(src, dst);
-      const srcStat = fs.statSync(src);
-      const dstStat = fs.statSync(dst);
-      if (srcStat.size !== dstStat.size) {
-        // Clean up failed copy
-        try {
-          fs.unlinkSync(dst);
-        } catch {
-          // ignore cleanup error
-        }
-        throw new Error(
-          `Cross-device move verification failed: size mismatch (src=${srcStat.size}, dst=${dstStat.size})`
-        );
+    if (err.code !== 'EXDEV') throw err;
+
+    fs.copyFileSync(src, dst, fs.constants.COPYFILE_EXCL);
+    try {
+      const [srcHash, dstHash] = await Promise.all([hashFile(src), hashFile(dst)]);
+      if (srcHash !== dstHash) {
+        throw new Error('Cross-device move verification failed: content hash mismatch');
       }
-      fs.unlinkSync(src);
-    } else {
-      throw err;
+      const srcStat = fs.statSync(src);
+      fs.utimesSync(dst, srcStat.atime, srcStat.mtime);
+    } catch (verifyErr) {
+      // Remove only the copy WE just made; the original is untouched.
+      try {
+        fs.unlinkSync(dst);
+      } catch {
+        // ignore cleanup error
+      }
+      throw verifyErr;
     }
+    fs.unlinkSync(src);
   }
 }
 
 /**
- * Execute a copy operation.
+ * Copy a file. Fails (EEXIST) rather than overwrite an existing destination.
  */
-function executeCopy(src: string, dst: string): void {
-  const dstDir = path.dirname(dst);
-  if (!fs.existsSync(dstDir)) {
-    fs.mkdirSync(dstDir, { recursive: true });
-  }
-  fs.copyFileSync(src, dst);
+export function executeCopy(src: string, dst: string): void {
+  ensureDir(path.dirname(dst));
+  fs.copyFileSync(src, dst, fs.constants.COPYFILE_EXCL);
 }
 
 /**
- * Execute a trash operation using the `trash` ESM package.
+ * Send a file to the OS trash / recycle bin using the ESM-only `trash` package.
+ * A real dynamic import() is required: trash is ESM-only and cannot be require()d.
  */
-async function executeTrash(src: string): Promise<void> {
-  const trashModule = await import('trash');
-  const trashFn = trashModule.default || trashModule;
-  await trashFn([src]);
+export async function executeTrash(src: string): Promise<void> {
+  const { default: trash } = await import('trash');
+  await trash([src]);
+}
+
+/**
+ * Has the source changed since the plan was made? Returns a reason string
+ * when the step must NOT run, or null when it is safe to proceed.
+ */
+function checkSource(step: PlannedStep): string | null {
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(step.src_path);
+  } catch (err: any) {
+    return err.code === 'ENOENT'
+      ? 'Source file no longer exists'
+      : `Source not accessible: ${err.message}`;
+  }
+  if (!stat.isFile()) return 'Source is no longer a regular file';
+  if (stat.size !== step.file_size) return 'File size changed since it was planned';
+  if (step.file_mtime && stat.mtime.toISOString().slice(0, 19) !== step.file_mtime) {
+    return 'File was modified since it was planned';
+  }
+  return null;
 }
 
 /**
  * Execute a full plan of steps, journaling each one.
  *
- * @param db - The better-sqlite3 database instance
- * @param steps - Array of planned steps to execute
- * @param source - Description of where this operation originated (e.g. "manual", "watcher")
- * @param recentlyWritten - RecentlyWritten tracker to register output paths
+ * Every step is re-validated immediately before it runs: the source must still
+ * match what was planned, and if the destination has been taken in the
+ * meantime the step either skips (policy "skip") or picks a fresh unique name.
+ * Existing files are never overwritten.
+ *
+ * @param source - where this operation originated (e.g. "manual:folder:3", "watcher")
  * @returns The operation ID from the journal
  */
-async function executePlan(
+export async function executePlan(
   db: any,
   steps: PlannedStep[],
   source: string,
-  recentlyWritten: any
+  recentlyWritten?: WrittenTracker | null
 ): Promise<number> {
   const operationId = journal.createOperation(db, source);
+  const runnable = steps.filter((s) => s.action_type !== 'skip');
 
-  for (let i = 0; i < steps.length; i++) {
-    const step = steps[i];
+  for (let i = 0; i < runnable.length; i++) {
+    const step = runnable[i];
     const stepId = journal.createStepPending(db, {
       operationId,
       seq: i + 1,
@@ -102,20 +127,40 @@ async function executePlan(
     });
 
     try {
+      const stale = checkSource(step);
+      if (stale) {
+        journal.markStepSkipped(db, stepId, stale);
+        continue;
+      }
+
+      let dst = step.dst_path;
+
+      if (step.action_type !== 'trash') {
+        if (!dst) throw new Error(`Step has no destination: ${step.action_type}`);
+
+        // Destination taken since planning? (A case-only rename of the file
+        // itself is not a conflict.)
+        if (fs.existsSync(dst) && !samePath(step.src_path, dst)) {
+          if (step.policy === 'skip') {
+            journal.markStepSkipped(db, stepId, 'Destination appeared since planning (policy: skip)');
+            continue;
+          }
+          const resolved = await resolveConflict(dst, new Set(), 'auto_rename');
+          dst = resolved.path;
+          journal.updateStepDst(db, stepId, dst);
+        }
+      }
+
       switch (step.action_type) {
         case 'move':
         case 'rename':
-          executeMove(step.src_path, step.dst_path!);
-          if (recentlyWritten && step.dst_path) {
-            recentlyWritten.add(step.dst_path);
-          }
+          await executeMove(step.src_path, dst!);
+          recentlyWritten?.add(dst!);
           break;
 
         case 'copy':
-          executeCopy(step.src_path, step.dst_path!);
-          if (recentlyWritten && step.dst_path) {
-            recentlyWritten.add(step.dst_path);
-          }
+          executeCopy(step.src_path, dst!);
+          recentlyWritten?.add(dst!);
           break;
 
         case 'trash':
@@ -140,7 +185,7 @@ async function executePlan(
  * Recover pending steps from incomplete operations (e.g. after a crash).
  * Checks filesystem state to determine whether each pending step succeeded or failed.
  */
-function recoverPending(db: any): void {
+export function recoverPending(db: any): void {
   const pendingSteps = journal.recoverPendingSteps(db);
 
   for (const step of pendingSteps) {
@@ -197,5 +242,3 @@ function recoverPending(db: any): void {
     }
   }
 }
-
-module.exports = { executePlan, executeMove, executeCopy, executeTrash, recoverPending };

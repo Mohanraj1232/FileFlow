@@ -1,27 +1,25 @@
-const { app, BrowserWindow, Menu } = require('electron');
-const path = require('node:path');
-const { initDb } = require('./core/db');
-const { recoverPending } = require('./core/executor');
-const { registerHandlers } = require('./core/handlers');
-const {
+import { app, BrowserWindow, Menu } from 'electron';
+import path from 'node:path';
+import { initDb } from './core/db';
+import { recoverPending } from './core/executor';
+import { registerHandlers } from './core/handlers';
+import {
   RecentlyWritten,
-  createWatcher,
-  watchFolder,
-  unwatchFolder,
-  shouldIgnoreFile,
-  isFileStable,
-  isWatchingEnabled,
+  WatcherManager,
   setWatchingEnabled,
-} = require('./core/watcher');
-const { getFileMeta } = require('./core/models');
-const { evaluate } = require('./core/engine');
-const { plan } = require('./core/planner');
-const { executePlan } = require('./core/executor');
+  type WatchTarget,
+} from './core/watcher';
+import { processWatchedFile } from './core/pipeline';
+import { loadRules, getSetting } from './core/rules-repo';
+import { managedDirs, isInManagedDir } from './core/planner';
+import { compileIgnore, parseIgnorePatterns } from './core/ignore';
+import type { FileProcessedEvent } from './shared/contract';
 
-let mainWindow: any = null;
+let mainWindow: BrowserWindow | null = null;
 let db: any = null;
-let watcher: any = null;
-let recentlyWritten: any = null;
+let watchers: WatcherManager | null = null;
+let recentlyWritten: RecentlyWritten | null = null;
+let cleanupTimer: NodeJS.Timeout | null = null;
 
 function createWindow(): void {
   // Ship without the default Electron dev menu (reload/toggle devtools/etc)
@@ -57,7 +55,7 @@ function createWindow(): void {
 
   // Show window when ready to prevent visual flash
   mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
+    mainWindow?.show();
   });
 
   // Dev vs production loading
@@ -72,80 +70,57 @@ function createWindow(): void {
 /**
  * Handle a new file detected by the watcher.
  */
-async function handleWatchedFile(filePath: string): Promise<void> {
-  if (!isWatchingEnabled() || !db) return;
-
-  // Skip files written by FileFlow itself
-  if (recentlyWritten && recentlyWritten.contains(filePath)) return;
-
-  // Skip temp/ignored files
-  if (shouldIgnoreFile(filePath)) return;
-
-  // Wait for file to stabilize
-  const stable = await isFileStable(filePath);
-  if (!stable) return;
+async function handleWatchedFile(filePath: string, folder: WatchTarget): Promise<void> {
+  if (!db || !recentlyWritten) return;
 
   try {
-    const fileMeta = getFileMeta(filePath);
-
-    // Load rules from DB
-    const rules = db
-      .prepare('SELECT * FROM rules ORDER BY priority ASC')
-      .all()
-      .map((rule: any) => {
-        const actions = db
-          .prepare(
-            'SELECT * FROM rule_actions WHERE rule_id = ? ORDER BY position ASC'
-          )
-          .all(rule.id)
-          .map((a: any) => ({
-            ...a,
-            params:
-              typeof a.params === 'string' ? JSON.parse(a.params) : a.params,
-          }));
-
-        return {
-          ...rule,
-          condition:
-            typeof rule.condition === 'string'
-              ? JSON.parse(rule.condition)
-              : rule.condition,
-          actions,
-        };
-      });
-
-    const result = await evaluate(fileMeta, rules, 'arrival');
-    if (!result) return;
-
-    // Get conflict policy
-    const settingRow = db
-      .prepare("SELECT value FROM settings WHERE key = 'conflict_default'")
-      .get();
-    const conflictPolicy = settingRow ? settingRow.value : 'auto_rename';
-
-    const existingFiles = new Set<string>();
-    const steps = plan(
-      fileMeta,
-      result.rule,
-      result.actions,
-      existingFiles,
-      conflictPolicy
-    );
-
-    if (steps.length > 0) {
-      await executePlan(db, steps, 'watcher', recentlyWritten);
-
-      // Notify the renderer about the operation
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('file-processed', {
-          path: filePath,
-          rule: result.rule.name,
-          actions: steps.length,
-        });
-      }
+    const done = await processWatchedFile({ db, recentlyWritten }, filePath, folder);
+    if (done && mainWindow && !mainWindow.isDestroyed()) {
+      const event: FileProcessedEvent = {
+        path: filePath,
+        rule: done.ruleName,
+        actions: done.steps,
+        operation_id: done.operationId,
+      };
+      mainWindow.webContents.send('file-processed', event);
     }
   } catch (err) {
     console.error(`Error processing watched file ${filePath}:`, err);
+  }
+}
+
+/**
+ * Keep the watcher out of folders FileFlow fills itself and out of anything
+ * the user told it to ignore, so it doesn't even open them (EMFILE) or report
+ * their files.
+ */
+const IGNORE_CACHE_TTL_MS = 5000;
+const ignoreCache = new Map<
+  number,
+  { at: number; isIgnored: (p: string, root: string) => boolean; dirs: string[] }
+>();
+
+function shouldIgnoreInWatcher(filePath: string, folder: WatchTarget): boolean {
+  if (!db) return false;
+  try {
+    // chokidar asks about every path it sees, so the rules/settings behind
+    // this are cached briefly instead of read from the database each time.
+    let entry = ignoreCache.get(folder.id);
+    if (!entry || Date.now() - entry.at > IGNORE_CACHE_TTL_MS) {
+      entry = {
+        at: Date.now(),
+        isIgnored: compileIgnore(parseIgnorePatterns(getSetting(db, 'ignore_patterns'))),
+        dirs: managedDirs(loadRules(db), folder.path),
+      };
+      ignoreCache.set(folder.id, entry);
+    }
+    return (
+      entry.isIgnored(filePath, folder.path) ||
+      isInManagedDir(filePath, entry.dirs) ||
+      isInManagedDir(path.join(filePath, 'x'), entry.dirs)
+    );
+  } catch {
+    return false;
   }
 }
 
@@ -155,50 +130,50 @@ async function handleWatchedFile(filePath: string): Promise<void> {
 function startWatchingFolders(): void {
   if (!db) return;
 
-  recentlyWritten = new RecentlyWritten(30000);
+  watchers = new WatcherManager(handleWatchedFile, shouldIgnoreInWatcher);
 
-  watcher = createWatcher(handleWatchedFile);
-
-  const folders = db
-    .prepare('SELECT * FROM watched_folders WHERE enabled = 1')
-    .all();
-
+  const folders = db.prepare('SELECT * FROM watched_folders WHERE enabled = 1').all();
   for (const folder of folders) {
-    watchFolder(watcher, folder.path);
+    watchers.add({ id: folder.id, path: folder.path, recursive: !!folder.recursive });
   }
 
   setWatchingEnabled(true);
 
   // Periodic cleanup of recently written entries
-  setInterval(() => {
-    if (recentlyWritten) {
-      recentlyWritten.cleanup();
-    }
-  }, 60000);
+  cleanupTimer = setInterval(() => recentlyWritten?.cleanup(), 60000);
+}
+
+async function shutdown(): Promise<void> {
+  if (cleanupTimer) clearInterval(cleanupTimer);
+  if (watchers) await watchers.close();
+  watchers = null;
+  if (db) {
+    db.close();
+    db = null;
+  }
 }
 
 // ===== App lifecycle =====
 
 app.whenReady().then(() => {
-  // Initialize database
-  const userDataPath = app.getPath('userData');
-  db = initDb(userDataPath);
+  // Initialize database (runs pending migrations, backing up first)
+  db = initDb(app.getPath('userData'));
 
   // Recover any pending operations from a previous crash
   recoverPending(db);
 
-  // Initialize the recently written tracker
+  // One tracker shared by the executor, the undo service and the watcher,
+  // so files FileFlow just wrote or restored are not picked up again.
   recentlyWritten = new RecentlyWritten(30000);
 
-  // Start file watching (creates `watcher`, needed by registerHandlers below)
+  // Start file watching (creates `watchers`, needed by registerHandlers below)
   startWatchingFolders();
 
   // Register all IPC handlers. mainWindow doesn't exist yet (createWindow
   // runs after this), so handlers that need it (e.g. title-bar theming)
   // are given an accessor rather than the window itself.
-  registerHandlers(db, recentlyWritten, watcher, () => mainWindow);
+  registerHandlers(db, recentlyWritten, watchers!, () => mainWindow);
 
-  // Create the main window
   createWindow();
 
   // macOS: re-create window when dock icon clicked
@@ -212,23 +187,10 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   // On macOS, apps typically stay active until Cmd+Q
   if (process.platform !== 'darwin') {
-    // Clean up watcher
-    if (watcher) {
-      watcher.close();
-    }
-    // Close database
-    if (db) {
-      db.close();
-    }
     app.quit();
   }
 });
 
 app.on('before-quit', () => {
-  if (watcher) {
-    watcher.close();
-  }
-  if (db) {
-    db.close();
-  }
+  void shutdown();
 });

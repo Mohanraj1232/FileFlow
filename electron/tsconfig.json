@@ -1,9 +1,10 @@
 {
   "compilerOptions": {
-    "target": "ES2021",
-    "module": "commonjs",
+    "target": "ES2022",
+    "module": "node16",
+    "moduleResolution": "node16",
     "moduleDetection": "force",
-    "lib": ["ES2021"],
+    "lib": ["ES2022"],
     "types": ["node"],
     "outDir": "../dist-electron",
     "rootDir": ".",
@@ -14,5 +15,6 @@
     "declaration": false,
     "sourceMap": true
   },
-  "include": ["./**/*.ts"]
+  "include": ["./**/*.ts"],
+  "exclude": ["./**/*.test.ts", "./test/**"]
 }

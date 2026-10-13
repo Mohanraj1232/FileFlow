@@ -3,14 +3,14 @@
  * Uses better-sqlite3 prepared statements (synchronous).
  */
 
-function now(): string {
+export function now(): string {
   return new Date().toISOString().slice(0, 19);
 }
 
 /**
  * Create a new operation record.
  */
-function createOperation(db: any, source: string): number {
+export function createOperation(db: any, source: string): number {
   const stmt = db.prepare(
     'INSERT INTO operations (source, status, started_at) VALUES (?, ?, ?)'
   );
@@ -21,7 +21,7 @@ function createOperation(db: any, source: string): number {
 /**
  * Create a pending step within an operation.
  */
-function createStepPending(
+export function createStepPending(
   db: any,
   step: {
     operationId: number;
@@ -59,7 +59,7 @@ function createStepPending(
 /**
  * Mark a step as done.
  */
-function markStepDone(db: any, stepId: number): void {
+export function markStepDone(db: any, stepId: number): void {
   db.prepare(
     "UPDATE operation_steps SET status = 'done', executed_at = ? WHERE id = ?"
   ).run(now(), stepId);
@@ -68,16 +68,34 @@ function markStepDone(db: any, stepId: number): void {
 /**
  * Mark a step as failed with an error message.
  */
-function markStepFailed(db: any, stepId: number, error: string): void {
+export function markStepFailed(db: any, stepId: number, error: string): void {
   db.prepare(
     "UPDATE operation_steps SET status = 'failed', error = ?, executed_at = ? WHERE id = ?"
   ).run(error, now(), stepId);
 }
 
 /**
+ * Mark a step as skipped: it was deliberately not executed (the source changed
+ * since the preview, the conflict policy said skip, etc.). Nothing on disk was touched.
+ */
+export function markStepSkipped(db: any, stepId: number, reason: string): void {
+  db.prepare(
+    "UPDATE operation_steps SET status = 'skipped', error = ?, executed_at = ? WHERE id = ?"
+  ).run(reason, now(), stepId);
+}
+
+/**
+ * Record the destination actually used when it differs from the planned one
+ * (a conflict appeared between planning and execution).
+ */
+export function updateStepDst(db: any, stepId: number, dstPath: string): void {
+  db.prepare('UPDATE operation_steps SET dst_path = ? WHERE id = ?').run(dstPath, stepId);
+}
+
+/**
  * Mark a step as undone.
  */
-function markStepUndone(db: any, stepId: number): void {
+export function markStepUndone(db: any, stepId: number): void {
   db.prepare(
     "UPDATE operation_steps SET status = 'undone', executed_at = ? WHERE id = ?"
   ).run(now(), stepId);
@@ -86,10 +104,12 @@ function markStepUndone(db: any, stepId: number): void {
 /**
  * Finish an operation — determine final status from step statuses.
  */
-function finishOperation(db: any, operationId: number): void {
-  const steps = db
+export function finishOperation(db: any, operationId: number): void {
+  const allSteps = db
     .prepare('SELECT status FROM operation_steps WHERE operation_id = ?')
     .all(operationId);
+  // Skipped steps touched nothing; they must not make a clean run look partial.
+  const steps = allSteps.filter((s: any) => s.status !== 'skipped');
 
   let status: string;
   if (steps.length === 0) {
@@ -117,20 +137,29 @@ function finishOperation(db: any, operationId: number): void {
 /**
  * Build a human-readable summary string for an operation.
  */
-function buildOperationSummary(db: any, operationId: number): string {
+export function buildOperationSummary(db: any, operationId: number): string {
   const steps = db
     .prepare(
       "SELECT action_type, COUNT(*) as count FROM operation_steps WHERE operation_id = ? AND status = 'done' GROUP BY action_type"
     )
     .all(operationId);
 
-  if (steps.length === 0) return 'No files processed';
+  const skipped = db
+    .prepare(
+      "SELECT COUNT(*) as count FROM operation_steps WHERE operation_id = ? AND status = 'skipped'"
+    )
+    .get(operationId).count;
+
+  if (steps.length === 0) {
+    return skipped > 0 ? `${skipped} skipped, nothing changed` : 'No files processed';
+  }
 
   const parts = steps.map(
     (s: any) =>
       `${s.count} file${s.count > 1 ? 's' : ''} ${s.action_type === 'move' ? 'moved' : s.action_type === 'copy' ? 'copied' : s.action_type === 'rename' ? 'renamed' : s.action_type === 'trash' ? 'trashed' : s.action_type + 'd'}`
   );
 
+  if (skipped > 0) parts.push(`${skipped} skipped`);
   return parts.join(', ');
 }
 
@@ -139,7 +168,7 @@ function buildOperationSummary(db: any, operationId: number): string {
  * Use 'undone' when every done step was successfully reverted, or
  * 'partially_undone' when some steps could not be reverted.
  */
-function setOperationUndoStatus(
+export function setOperationUndoStatus(
   db: any,
   operationId: number,
   status: 'undone' | 'partially_undone'
@@ -152,14 +181,14 @@ function setOperationUndoStatus(
 /**
  * Get operations with pagination.
  */
-function getOperations(
+export function getOperations(
   db: any,
   limit: number = 50,
   offset: number = 0
 ): any[] {
   return db
     .prepare(
-      'SELECT * FROM operations ORDER BY started_at DESC LIMIT ? OFFSET ?'
+      'SELECT * FROM operations ORDER BY started_at DESC, id DESC LIMIT ? OFFSET ?'
     )
     .all(limit, offset);
 }
@@ -167,7 +196,7 @@ function getOperations(
 /**
  * Get all steps for an operation.
  */
-function getOperationSteps(db: any, operationId: number): any[] {
+export function getOperationSteps(db: any, operationId: number): any[] {
   return db
     .prepare(
       'SELECT * FROM operation_steps WHERE operation_id = ? ORDER BY seq ASC'
@@ -178,14 +207,14 @@ function getOperationSteps(db: any, operationId: number): any[] {
 /**
  * Get a single step by ID.
  */
-function getStepById(db: any, stepId: number): any {
+export function getStepById(db: any, stepId: number): any {
   return db.prepare('SELECT * FROM operation_steps WHERE id = ?').get(stepId);
 }
 
 /**
  * Recover all pending steps (for crash recovery).
  */
-function recoverPendingSteps(db: any): any[] {
+export function recoverPendingSteps(db: any): any[] {
   return db
     .prepare("SELECT * FROM operation_steps WHERE status = 'pending'")
     .all();
@@ -194,7 +223,7 @@ function recoverPendingSteps(db: any): any[] {
 /**
  * Count done steps from today.
  */
-function countDoneStepsToday(db: any): number {
+export function countDoneStepsToday(db: any): number {
   const today = new Date().toISOString().slice(0, 10);
   const row = db
     .prepare(
@@ -207,7 +236,7 @@ function countDoneStepsToday(db: any): number {
 /**
  * Count done steps from the past 7 days.
  */
-function countDoneStepsWeek(db: any): number {
+export function countDoneStepsWeek(db: any): number {
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
     .toISOString()
     .slice(0, 10);
@@ -218,19 +247,3 @@ function countDoneStepsWeek(db: any): number {
     .get(weekAgo);
   return row ? row.count : 0;
 }
-
-module.exports = {
-  createOperation,
-  createStepPending,
-  markStepDone,
-  markStepFailed,
-  markStepUndone,
-  finishOperation,
-  setOperationUndoStatus,
-  getOperations,
-  getOperationSteps,
-  getStepById,
-  recoverPendingSteps,
-  countDoneStepsToday,
-  countDoneStepsWeek,
-};

@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
@@ -31,14 +31,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('reorder_rules', ruleIds),
 
   // Rule Testing & Preview
-  testRule: (filename: string, ruleId: number | null) =>
-    ipcRenderer.invoke('test_rule', filename, ruleId),
+  testRule: (filename: string, ruleId: number | null, draft?: unknown) =>
+    ipcRenderer.invoke('test_rule', filename, ruleId, draft),
 
   previewFolder: (folderId: number) =>
     ipcRenderer.invoke('preview_folder', folderId),
 
-  applyPlan: (folderId: number, selectedPaths: string[] | null) =>
-    ipcRenderer.invoke('apply_plan', folderId, selectedPaths),
+  applyPlan: (folderId: number, planId: string, selectedFileKeys: string[] | null) =>
+    ipcRenderer.invoke('apply_plan', folderId, planId, selectedFileKeys),
 
   // Operations & Journal
   getOperations: (limit: number, offset: number) =>
@@ -82,9 +82,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Event listeners for renderer
   onFileProcessed: (callback: (data: any) => void) => {
-    ipcRenderer.on('file-processed', (_event: any, data: any) =>
-      callback(data)
-    );
+    const listener = (_event: unknown, data: unknown) => callback(data);
+    ipcRenderer.on('file-processed', listener);
+    // Return an unsubscribe function so a component only removes its own listener.
+    return () => ipcRenderer.removeListener('file-processed', listener);
   },
 
   removeFileProcessedListener: () => {

@@ -1,103 +1,149 @@
-const { ipcMain, dialog } = require('electron');
-const fs = require('node:fs');
-const path = require('node:path');
-const { getFileMeta } = require('./models');
-const { evaluate } = require('./engine');
-const { plan, buildSummary } = require('./planner');
-const { executePlan } = require('./executor');
-const journal = require('./journal');
-const { undoOperation, undoStep } = require('./undo');
-const {
-  watchFolder,
-  unwatchFolder,
+import { ipcMain, dialog } from 'electron';
+import fs from 'node:fs';
+import path from 'node:path';
+import { extensionToKind } from './models';
+import { evaluate, type Rule as EngineRule } from './engine';
+import { expandVariables, expandRenamePattern } from './planner';
+import * as journal from './journal';
+import { undoOperation, undoStep } from './undo';
+import {
   isWatchingEnabled,
   setWatchingEnabled,
-} = require('./watcher');
+  type WatcherManager,
+  type RecentlyWritten,
+} from './watcher';
+import * as repo from './rules-repo';
+import {
+  toRuleDto,
+  toWatchedFolderDto,
+  toSettingsDto,
+  type RuleInput,
+} from './dto';
+import {
+  previewFolder,
+  applyPlan,
+  getUnsortedFiles,
+  PlanCache,
+  type FolderRow,
+} from './organizer';
+import { parseIgnorePatterns } from './ignore';
+import { normalizePolicy } from './planner';
+import type { DashboardStats, TestRuleResult } from '../shared/contract';
 
-/**
- * Recursively walk a directory, returning all file paths.
- */
-function walkDir(dirPath: string, recursive: boolean): string[] {
-  const results: string[] = [];
+const SETTING_KEYS = [
+  'conflict_default',
+  'notification_level',
+  'theme',
+  'scan_schedule_minutes',
+  'ignore_patterns',
+] as const;
 
-  let entries: any[];
-  try {
-    entries = fs.readdirSync(dirPath, { withFileTypes: true });
-  } catch {
-    return results;
+function getFolder(db: any, id: number): FolderRow {
+  const folder = db.prepare('SELECT * FROM watched_folders WHERE id = ?').get(id);
+  if (!folder) throw new Error(`Folder not found: ${id}`);
+  return folder;
+}
+
+/** Validate a setting before it is stored, so a bad value can't poison later scans. */
+function validateSetting(key: string, value: string): string {
+  if (!(SETTING_KEYS as readonly string[]).includes(key)) {
+    throw new Error(`Unknown setting: ${key}`);
   }
+  switch (key) {
+    case 'conflict_default':
+      return normalizePolicy(value);
+    case 'notification_level':
+      if (!['all', 'batched', 'errors_only', 'none'].includes(value)) {
+        throw new Error(`Invalid notification level: ${value}`);
+      }
+      return value;
+    case 'theme':
+      if (!['light', 'dark', 'system'].includes(value)) throw new Error(`Invalid theme: ${value}`);
+      return value;
+    case 'scan_schedule_minutes': {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 1 || n > 10080) throw new Error('Invalid scan schedule');
+      return String(Math.round(n));
+    }
+    case 'ignore_patterns':
+      return JSON.stringify(parseIgnorePatterns(value));
+    default:
+      return value;
+  }
+}
 
-  for (const entry of entries) {
-    const fullPath = path.join(dirPath, entry.name);
-    if (entry.isFile()) {
-      results.push(fullPath);
-    } else if (entry.isDirectory() && recursive) {
-      results.push(...walkDir(fullPath, true));
+/** Evaluate a file *name* against rules, without touching any file. */
+async function testRuleAgainst(
+  filename: string,
+  rules: EngineRule[]
+): Promise<TestRuleResult> {
+  const parsed = path.parse(filename);
+  const ext = parsed.ext.replace(/^\./, '').toLowerCase();
+  const mockMeta = {
+    name: parsed.name,
+    extension: ext,
+    size: 0,
+    mtime: new Date(),
+    kind: extensionToKind(ext),
+    path: filename,
+    sourceFolder: parsed.dir || '.',
+    // Left literal so the result reads "{root}/Documents" rather than a made-up path.
+    watchRoot: '{root}',
+  };
+
+  const result = await evaluate(mockMeta, rules, 'any');
+  if (!result) return { matched: false };
+
+  const out: TestRuleResult = {
+    matched: true,
+    rule_id: result.rule.id,
+    rule_name: result.rule.name,
+  };
+  for (const action of result.actions) {
+    const params = action.params ?? {};
+    if (!out.destination && (action.action_type === 'move' || action.action_type === 'copy') && params.destination) {
+      out.destination = path.join(expandVariables(params.destination, mockMeta), parsed.base);
+    }
+    if (action.action_type === 'rename' && !out.new_name) {
+      const newName = expandRenamePattern(params.pattern || params.name || '{name}.{ext}', mockMeta);
+      const pattern = String(params.pattern || '{name}.{ext}');
+      out.new_name =
+        !pattern.includes('{ext}') && ext && !newName.endsWith(`.${ext}`) ? `${newName}.${ext}` : newName;
     }
   }
-
-  return results;
-}
-
-/**
- * Load all rules from the database with their actions, parsing JSON conditions.
- */
-function loadRules(db: any): any[] {
-  const rules = db.prepare('SELECT * FROM rules ORDER BY priority ASC').all();
-
-  for (const rule of rules) {
-    const actions = db
-      .prepare(
-        'SELECT * FROM rule_actions WHERE rule_id = ? ORDER BY position ASC'
-      )
-      .all(rule.id);
-
-    rule.actions = actions.map((a: any) => ({
-      ...a,
-      params: typeof a.params === 'string' ? JSON.parse(a.params) : a.params,
-    }));
-
-    rule.condition =
-      typeof rule.condition === 'string'
-        ? JSON.parse(rule.condition)
-        : rule.condition;
-  }
-
-  return rules;
-}
-
-/**
- * Get conflict resolution policy from settings.
- */
-function getConflictPolicy(db: any): string {
-  const row = db
-    .prepare("SELECT value FROM settings WHERE key = 'conflict_default'")
-    .get();
-  return row ? row.value : 'auto_rename';
+  return out;
 }
 
 /**
  * Register all IPC handlers.
  */
-function registerHandlers(
+export function registerHandlers(
   db: any,
-  recentlyWritten: any,
-  watcher: any,
+  recentlyWritten: RecentlyWritten,
+  watchers: WatcherManager,
   getMainWindow: () => any
 ): void {
+  const planCache = new PlanCache();
+
   // ===== Watched Folders =====
 
   ipcMain.handle('get_watched_folders', () => {
-    return db.prepare('SELECT * FROM watched_folders ORDER BY id ASC').all();
+    return db
+      .prepare('SELECT * FROM watched_folders ORDER BY id ASC')
+      .all()
+      .map(toWatchedFolderDto);
   });
 
   ipcMain.handle(
     'add_watched_folder',
-    (_event: any, folderPath: string, recursive: boolean) => {
-      // Validate directory exists
+    (_event, folderPath: string, recursive: boolean) => {
+      if (typeof folderPath !== 'string' || !folderPath) throw new Error('A folder path is required');
       if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
         throw new Error(`Directory does not exist: ${folderPath}`);
       }
+
+      const existing = db.prepare('SELECT id FROM watched_folders WHERE path = ?').get(folderPath);
+      if (existing) throw new Error('That folder is already being watched');
 
       const now = new Date().toISOString().slice(0, 19);
       const result = db
@@ -106,457 +152,167 @@ function registerHandlers(
         )
         .run(folderPath, recursive ? 1 : 0, now);
 
-      watchFolder(watcher, folderPath);
-
-      return db
+      const row = db
         .prepare('SELECT * FROM watched_folders WHERE id = ?')
         .get(result.lastInsertRowid);
+      watchers.add({ id: row.id, path: row.path, recursive: !!row.recursive });
+      return toWatchedFolderDto(row);
     }
   );
 
-  ipcMain.handle('remove_watched_folder', (_event: any, id: number) => {
-    const folder = db
-      .prepare('SELECT * FROM watched_folders WHERE id = ?')
-      .get(id);
-
+  ipcMain.handle('remove_watched_folder', async (_event, id: number) => {
+    const folder = db.prepare('SELECT * FROM watched_folders WHERE id = ?').get(id);
     db.prepare('DELETE FROM watched_folders WHERE id = ?').run(id);
-
-    if (folder) {
-      unwatchFolder(watcher, folder.path);
-    }
-
+    if (folder) await watchers.remove(folder.path);
     return { success: true };
   });
 
-  ipcMain.handle(
-    'toggle_watched_folder',
-    (_event: any, id: number, enabled: boolean) => {
-      db.prepare('UPDATE watched_folders SET enabled = ? WHERE id = ?').run(
-        enabled ? 1 : 0,
-        id
-      );
-
-      const folder = db
-        .prepare('SELECT * FROM watched_folders WHERE id = ?')
-        .get(id);
-
-      if (folder) {
-        if (enabled) {
-          watchFolder(watcher, folder.path);
-        } else {
-          unwatchFolder(watcher, folder.path);
-        }
+  ipcMain.handle('toggle_watched_folder', async (_event, id: number, enabled: boolean) => {
+    db.prepare('UPDATE watched_folders SET enabled = ? WHERE id = ?').run(enabled ? 1 : 0, id);
+    const folder = db.prepare('SELECT * FROM watched_folders WHERE id = ?').get(id);
+    if (folder) {
+      if (enabled) {
+        watchers.add({ id: folder.id, path: folder.path, recursive: !!folder.recursive });
+      } else {
+        await watchers.remove(folder.path);
       }
-
-      return folder;
     }
-  );
+    return folder ? toWatchedFolderDto(folder) : null;
+  });
 
   // ===== Rules =====
 
-  ipcMain.handle('get_rules', () => {
-    return loadRules(db);
+  ipcMain.handle('get_rules', () => repo.loadRules(db).map(toRuleDto));
+
+  ipcMain.handle('create_rule', (_event, ruleData: RuleInput) => {
+    const id = repo.createRule(db, ruleData);
+    return toRuleDto(repo.getRule(db, id)!);
   });
 
-  ipcMain.handle('create_rule', (_event: any, ruleData: any) => {
-    const now = new Date().toISOString().slice(0, 19);
-    const conditionStr =
-      typeof ruleData.condition === 'string'
-        ? ruleData.condition
-        : JSON.stringify(ruleData.condition);
-
-    const result = db
-      .prepare(
-        `INSERT INTO rules (name, enabled, priority, trigger_type, condition, stop_after, scope_folder, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(
-        ruleData.name,
-        ruleData.enabled !== undefined ? (ruleData.enabled ? 1 : 0) : 1,
-        ruleData.priority || 0,
-        ruleData.trigger_type || 'arrival',
-        conditionStr,
-        ruleData.stop_after !== undefined ? (ruleData.stop_after ? 1 : 0) : 1,
-        ruleData.scope_folder || null,
-        now,
-        now
-      );
-
-    const ruleId = result.lastInsertRowid;
-
-    // Insert actions
-    if (ruleData.actions && Array.isArray(ruleData.actions)) {
-      const insertAction = db.prepare(
-        'INSERT INTO rule_actions (rule_id, position, action_type, params) VALUES (?, ?, ?, ?)'
-      );
-
-      for (let i = 0; i < ruleData.actions.length; i++) {
-        const action = ruleData.actions[i];
-        const paramsStr =
-          typeof action.params === 'string'
-            ? action.params
-            : JSON.stringify(action.params);
-        insertAction.run(ruleId, i, action.action_type, paramsStr);
-      }
-    }
-
-    // Return the created rule with actions
-    const rules = loadRules(db);
-    return rules.find((r: any) => r.id === ruleId);
+  ipcMain.handle('update_rule', (_event, ruleData: RuleInput & { id: number }) => {
+    const id = repo.updateRule(db, ruleData);
+    return toRuleDto(repo.getRule(db, id)!);
   });
 
-  ipcMain.handle('update_rule', (_event: any, ruleData: any) => {
-    const now = new Date().toISOString().slice(0, 19);
-    const conditionStr =
-      typeof ruleData.condition === 'string'
-        ? ruleData.condition
-        : JSON.stringify(ruleData.condition);
-
-    db.prepare(
-      `UPDATE rules SET name = ?, enabled = ?, priority = ?, trigger_type = ?,
-       condition = ?, stop_after = ?, scope_folder = ?, updated_at = ?
-       WHERE id = ?`
-    ).run(
-      ruleData.name,
-      ruleData.enabled !== undefined ? (ruleData.enabled ? 1 : 0) : 1,
-      ruleData.priority || 0,
-      ruleData.trigger_type || 'arrival',
-      conditionStr,
-      ruleData.stop_after !== undefined ? (ruleData.stop_after ? 1 : 0) : 1,
-      ruleData.scope_folder || null,
-      now,
-      ruleData.id
-    );
-
-    // Delete old actions and insert new ones
-    db.prepare('DELETE FROM rule_actions WHERE rule_id = ?').run(ruleData.id);
-
-    if (ruleData.actions && Array.isArray(ruleData.actions)) {
-      const insertAction = db.prepare(
-        'INSERT INTO rule_actions (rule_id, position, action_type, params) VALUES (?, ?, ?, ?)'
-      );
-
-      for (let i = 0; i < ruleData.actions.length; i++) {
-        const action = ruleData.actions[i];
-        const paramsStr =
-          typeof action.params === 'string'
-            ? action.params
-            : JSON.stringify(action.params);
-        insertAction.run(ruleData.id, i, action.action_type, paramsStr);
-      }
-    }
-
-    const rules = loadRules(db);
-    return rules.find((r: any) => r.id === ruleData.id);
-  });
-
-  ipcMain.handle('delete_rule', (_event: any, id: number) => {
-    db.prepare('DELETE FROM rules WHERE id = ?').run(id);
+  ipcMain.handle('delete_rule', (_event, id: number) => {
+    repo.deleteRule(db, id);
     return { success: true };
   });
 
-  ipcMain.handle(
-    'toggle_rule',
-    (_event: any, id: number, enabled: boolean) => {
-      const now = new Date().toISOString().slice(0, 19);
-      db.prepare(
-        'UPDATE rules SET enabled = ?, updated_at = ? WHERE id = ?'
-      ).run(enabled ? 1 : 0, now, id);
-      const rules = loadRules(db);
-      return rules.find((r: any) => r.id === id);
-    }
-  );
+  ipcMain.handle('toggle_rule', (_event, id: number, enabled: boolean) => {
+    repo.setRuleEnabled(db, id, enabled);
+    const rule = repo.getRule(db, id);
+    return rule ? toRuleDto(rule) : null;
+  });
 
-  ipcMain.handle('reorder_rules', (_event: any, ruleIds: number[]) => {
-    const now = new Date().toISOString().slice(0, 19);
-    const updateStmt = db.prepare(
-      'UPDATE rules SET priority = ?, updated_at = ? WHERE id = ?'
-    );
-
-    const reorder = db.transaction(() => {
-      for (let i = 0; i < ruleIds.length; i++) {
-        updateStmt.run(i, now, ruleIds[i]);
-      }
-    });
-
-    reorder();
-    return loadRules(db);
+  ipcMain.handle('reorder_rules', (_event, ruleIds: number[]) => {
+    repo.reorderRules(db, ruleIds);
+    return repo.loadRules(db).map(toRuleDto);
   });
 
   // ===== Rule Testing & Preview =====
 
   ipcMain.handle(
     'test_rule',
-    async (_event: any, filename: string, ruleId: number | null) => {
-      // Build a mock FileMeta from the filename
-      const parsed = path.parse(filename);
-      const ext = parsed.ext.replace(/^\./, '').toLowerCase();
-      const { extensionToKind } = require('./models');
-
-      const mockMeta = {
-        name: parsed.name,
-        extension: ext,
-        size: 0,
-        mtime: new Date(),
-        kind: extensionToKind(ext),
-        path: filename,
-        sourceFolder: parsed.dir || '.',
-      };
-
-      let rules: any[];
-      if (ruleId) {
-        rules = loadRules(db).filter((r: any) => r.id === ruleId);
+    async (_event, filename: string, ruleId: number | null, draft?: RuleInput) => {
+      let rules: EngineRule[];
+      if (draft) {
+        // Test an unsaved rule exactly as the builder currently shows it.
+        rules = [
+          {
+            id: draft.id ?? 0,
+            name: draft.name || 'Unsaved rule',
+            enabled: 1,
+            priority: 0,
+            trigger_type: 'both',
+            condition: draft.condition as any,
+            stop_after: 1,
+            scope_folder: null,
+            actions: (draft.actions ?? []).map((a, i) => ({
+              id: i,
+              rule_id: draft.id ?? 0,
+              position: i,
+              action_type: a.action_type,
+              params: typeof a.params === 'string' ? JSON.parse(a.params) : a.params,
+            })),
+          },
+        ];
       } else {
-        rules = loadRules(db);
+        rules = repo.loadRules(db);
+        if (ruleId) rules = rules.filter((r) => r.id === ruleId);
       }
-
-      const result = await evaluate(mockMeta, rules, 'arrival');
-      if (result) {
-        return {
-          matched: true,
-          rule: { id: result.rule.id, name: result.rule.name },
-          actions: result.actions.map((a: any) => ({
-            action_type: a.action_type,
-            params: a.params,
-          })),
-        };
-      }
-      return { matched: false, rule: null, actions: [] };
+      return testRuleAgainst(filename, rules);
     }
   );
 
-  ipcMain.handle(
-    'preview_folder',
-    async (_event: any, folderId: number) => {
-      const folder = db
-        .prepare('SELECT * FROM watched_folders WHERE id = ?')
-        .get(folderId);
-
-      if (!folder) throw new Error(`Folder not found: ${folderId}`);
-
-      const files = walkDir(folder.path, !!folder.recursive);
-      const rules = loadRules(db);
-      const conflictPolicy = getConflictPolicy(db);
-      const existingFiles = new Set<string>();
-
-      const allSteps: any[] = [];
-      let unmatchedCount = 0;
-
-      for (const filePath of files) {
-        let fileMeta;
-        try {
-          fileMeta = getFileMeta(filePath);
-        } catch {
-          continue; // Skip files we can't stat
-        }
-
-        const result = await evaluate(fileMeta, rules, 'arrival');
-        if (result) {
-          const steps = plan(
-            fileMeta,
-            result.rule,
-            result.actions,
-            existingFiles,
-            conflictPolicy
-          );
-          allSteps.push(...steps);
-        } else {
-          unmatchedCount++;
-        }
-      }
-
-      return buildSummary(allSteps, unmatchedCount, files.length);
-    }
-  );
+  ipcMain.handle('preview_folder', async (_event, folderId: number) => {
+    return previewFolder(db, getFolder(db, folderId), planCache);
+  });
 
   ipcMain.handle(
     'apply_plan',
-    async (
-      _event: any,
-      folderId: number,
-      selectedPaths: string[] | null
-    ) => {
-      const folder = db
-        .prepare('SELECT * FROM watched_folders WHERE id = ?')
-        .get(folderId);
-
-      if (!folder) throw new Error(`Folder not found: ${folderId}`);
-
-      let files = walkDir(folder.path, !!folder.recursive);
-
-      // Filter to selected paths if provided
-      if (selectedPaths && selectedPaths.length > 0) {
-        const selectedSet = new Set(
-          selectedPaths.map((p: string) => p.replace(/\\/g, '/'))
-        );
-        files = files.filter((f) => selectedSet.has(f.replace(/\\/g, '/')));
-      }
-
-      const rules = loadRules(db);
-      const conflictPolicy = getConflictPolicy(db);
-      const existingFiles = new Set<string>();
-      const allSteps: any[] = [];
-
-      for (const filePath of files) {
-        let fileMeta;
-        try {
-          fileMeta = getFileMeta(filePath);
-        } catch {
-          continue;
-        }
-
-        const result = await evaluate(fileMeta, rules, 'arrival');
-        if (result) {
-          const steps = plan(
-            fileMeta,
-            result.rule,
-            result.actions,
-            existingFiles,
-            conflictPolicy
-          );
-          allSteps.push(...steps);
-        }
-      }
-
-      if (allSteps.length === 0) {
-        return { operationId: null, stepsExecuted: 0, message: 'No files matched any rules' };
-      }
-
-      const operationId = await executePlan(
+    async (_event, folderId: number, planId: string, selectedFileKeys: string[] | null) => {
+      return applyPlan(
         db,
-        allSteps,
-        `manual:folder:${folderId}`,
+        getFolder(db, folderId),
+        planId,
+        selectedFileKeys,
+        planCache,
         recentlyWritten
       );
-
-      const operation = db
-        .prepare('SELECT * FROM operations WHERE id = ?')
-        .get(operationId);
-
-      return {
-        operationId,
-        stepsExecuted: allSteps.length,
-        operation,
-      };
     }
   );
 
   // ===== Operations & Journal =====
 
-  ipcMain.handle(
-    'get_operations',
-    (_event: any, limit: number = 50, offset: number = 0) => {
-      return journal.getOperations(db, limit, offset);
-    }
-  );
+  ipcMain.handle('get_operations', (_event, limit: number = 50, offset: number = 0) => {
+    return journal.getOperations(db, limit, offset);
+  });
 
-  ipcMain.handle(
-    'get_operation_steps',
-    (_event: any, operationId: number) => {
-      return journal.getOperationSteps(db, operationId);
-    }
-  );
+  ipcMain.handle('get_operation_steps', (_event, operationId: number) => {
+    return journal.getOperationSteps(db, operationId);
+  });
 
   // ===== Undo =====
 
-  ipcMain.handle('undo_operation', async (_event: any, operationId: number) => {
-    return await undoOperation(db, operationId);
-  });
+  ipcMain.handle('undo_operation', (_event, operationId: number) =>
+    undoOperation(db, operationId, recentlyWritten)
+  );
 
-  ipcMain.handle('undo_step', async (_event: any, stepId: number) => {
-    return await undoStep(db, stepId);
-  });
+  ipcMain.handle('undo_step', (_event, stepId: number) =>
+    undoStep(db, stepId, recentlyWritten)
+  );
 
   // ===== Unsorted Files =====
 
-  ipcMain.handle(
-    'get_unsorted_files',
-    async (_event: any, folderId: number) => {
-      const folder = db
-        .prepare('SELECT * FROM watched_folders WHERE id = ?')
-        .get(folderId);
-
-      if (!folder) throw new Error(`Folder not found: ${folderId}`);
-
-      const files = walkDir(folder.path, !!folder.recursive);
-      const rules = loadRules(db);
-      const unsorted: any[] = [];
-
-      for (const filePath of files) {
-        let fileMeta;
-        try {
-          fileMeta = getFileMeta(filePath);
-        } catch {
-          continue;
-        }
-
-        const result = await evaluate(fileMeta, rules, 'arrival');
-        if (!result) {
-          unsorted.push(fileMeta);
-        }
-      }
-
-      return unsorted;
-    }
-  );
+  ipcMain.handle('get_unsorted_files', (_event, folderId: number) => {
+    return getUnsortedFiles(db, getFolder(db, folderId));
+  });
 
   // ===== Dashboard Stats =====
 
-  ipcMain.handle('get_dashboard_stats', () => {
-    const totalFolders = db
-      .prepare('SELECT COUNT(*) as count FROM watched_folders')
-      .get().count;
-    const activeFolders = db
-      .prepare(
-        'SELECT COUNT(*) as count FROM watched_folders WHERE enabled = 1'
-      )
-      .get().count;
-    const totalRules = db
-      .prepare('SELECT COUNT(*) as count FROM rules')
-      .get().count;
-    const activeRules = db
-      .prepare('SELECT COUNT(*) as count FROM rules WHERE enabled = 1')
-      .get().count;
-    const totalOperations = db
-      .prepare('SELECT COUNT(*) as count FROM operations')
-      .get().count;
-    const filesToday = journal.countDoneStepsToday(db);
-    const filesWeek = journal.countDoneStepsWeek(db);
-
-    const recentOps = journal.getOperations(db, 5, 0);
-
+  ipcMain.handle('get_dashboard_stats', (): DashboardStats => {
+    const count = (sql: string) => db.prepare(sql).get().count as number;
     return {
-      totalFolders,
-      activeFolders,
-      totalRules,
-      activeRules,
-      totalOperations,
-      filesToday,
-      filesWeek,
-      recentOperations: recentOps,
+      files_organized_today: journal.countDoneStepsToday(db),
+      files_organized_week: journal.countDoneStepsWeek(db),
+      active_rules: count('SELECT COUNT(*) as count FROM rules WHERE enabled = 1'),
+      watched_folders: count('SELECT COUNT(*) as count FROM watched_folders'),
+      recent_operations: journal.getOperations(db, 5, 0),
     };
   });
 
   // ===== Settings =====
 
   ipcMain.handle('get_settings', () => {
-    const rows = db.prepare('SELECT key, value FROM settings').all();
-    const settings: Record<string, string> = {};
-    for (const row of rows) {
-      settings[row.key] = row.value;
-    }
-    return settings;
+    return toSettingsDto(db.prepare('SELECT key, value FROM settings').all());
   });
 
-  ipcMain.handle(
-    'update_setting',
-    (_event: any, key: string, value: string) => {
-      db.prepare(
-        'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)'
-      ).run(key, value);
-      return { success: true };
-    }
-  );
+  ipcMain.handle('update_setting', (_event, key: string, value: string) => {
+    const clean = validateSetting(key, String(value));
+    db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, clean);
+    return { success: true };
+  });
 
   // ===== Watching Control =====
 
@@ -570,42 +326,29 @@ function registerHandlers(
     return { watching: false };
   });
 
-  ipcMain.handle('get_watching_status', () => {
-    return { watching: isWatchingEnabled() };
-  });
+  ipcMain.handle('get_watching_status', () => ({ watching: isWatchingEnabled() }));
 
   // ===== Title Bar =====
 
-  ipcMain.handle(
-    'set_title_bar_theme',
-    (_event: any, isDark: boolean) => {
-      const win = getMainWindow();
-      // macOS uses hiddenInset (native traffic lights); overlay only
-      // applies on Windows/Linux where we draw the min/max/close area.
-      if (win && typeof win.setTitleBarOverlay === 'function') {
-        win.setTitleBarOverlay({
-          color: isDark ? '#010409' : '#ffffff',
-          symbolColor: isDark ? '#8b949e' : '#656d76',
-          height: 40,
-        });
-      }
-      return { success: true };
+  ipcMain.handle('set_title_bar_theme', (_event, isDark: boolean) => {
+    const win = getMainWindow();
+    // macOS uses hiddenInset (native traffic lights); overlay only
+    // applies on Windows/Linux where we draw the min/max/close area.
+    if (win && typeof win.setTitleBarOverlay === 'function') {
+      win.setTitleBarOverlay({
+        color: isDark ? '#010409' : '#ffffff',
+        symbolColor: isDark ? '#8b949e' : '#656d76',
+        height: 40,
+      });
     }
-  );
+    return { success: true };
+  });
 
   // ===== Dialog =====
 
   ipcMain.handle('show_open_dialog', async () => {
-    const result = await dialog.showOpenDialog({
-      properties: ['openDirectory'],
-    });
-
-    if (result.canceled || result.filePaths.length === 0) {
-      return null;
-    }
-
+    const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
+    if (result.canceled || result.filePaths.length === 0) return null;
     return result.filePaths[0];
   });
 }
-
-module.exports = { registerHandlers };

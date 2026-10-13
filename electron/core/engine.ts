@@ -1,6 +1,8 @@
 // Rule evaluation engine — pure logic, no I/O side effects
+import picomatch from 'picomatch';
+import type { FileMetaInfo } from './models';
 
-interface Condition {
+export interface Condition {
   all?: Condition[];
   any?: Condition[];
   field?: string;
@@ -8,7 +10,7 @@ interface Condition {
   value?: any;
 }
 
-interface RuleAction {
+export interface RuleAction {
   id: number;
   rule_id: number;
   position: number;
@@ -16,7 +18,7 @@ interface RuleAction {
   params: any;
 }
 
-interface Rule {
+export interface Rule {
   id: number;
   name: string;
   enabled: number;
@@ -28,41 +30,20 @@ interface Rule {
   actions: RuleAction[];
 }
 
-interface FileMeta {
-  name: string;
-  extension: string;
-  size: number;
-  mtime: Date;
-  kind: string;
-  path: string;
-  sourceFolder: string;
-}
+export type FileMeta = FileMetaInfo;
 
-interface EvalResult {
+export interface EvalResult {
   rule: Rule;
   actions: RuleAction[];
 }
 
-// Cached picomatch import promise (ESM-only package)
-let picomatchPromise: Promise<any> | null = null;
-
-function getPicomatch(): Promise<any> {
-  if (!picomatchPromise) {
-    picomatchPromise = import('picomatch').then((m) => m.default || m);
-  }
-  return picomatchPromise;
-}
-
-// Picomatch cache for compiled glob patterns
+// Cache of compiled glob patterns
 const globCache = new Map<string, (input: string) => boolean>();
 
-async function getGlobMatcher(
-  pattern: string
-): Promise<(input: string) => boolean> {
+function getGlobMatcher(pattern: string): (input: string) => boolean {
   const cached = globCache.get(pattern);
   if (cached) return cached;
 
-  const picomatch = await getPicomatch();
   const matcher = picomatch(pattern, { nocase: true });
   globCache.set(pattern, matcher);
   return matcher;
@@ -123,8 +104,7 @@ async function evaluateLeaf(fileMeta: FileMeta, cond: Condition): Promise<boolea
           }
         }
         case 'glob': {
-          const matcher = await getGlobMatcher(String(value));
-          return matcher(name);
+          return getGlobMatcher(String(value))(name);
         }
         default:
           return false;
@@ -182,7 +162,7 @@ async function evaluateLeaf(fileMeta: FileMeta, cond: Condition): Promise<boolea
   }
 }
 
-async function evaluateCondition(
+export async function evaluateCondition(
   fileMeta: FileMeta,
   cond: Condition
 ): Promise<boolean> {
@@ -210,7 +190,7 @@ async function evaluateCondition(
   return evaluateLeaf(fileMeta, cond);
 }
 
-async function evaluate(
+export async function evaluate(
   fileMeta: FileMeta,
   rules: Rule[],
   trigger: string
@@ -221,7 +201,13 @@ async function evaluate(
   // mode but is intentionally not consulted here today.
   // Filter enabled rules matching trigger type, sort by priority (lower number = higher priority)
   const candidateRules = rules
-    .filter((r) => r.enabled === 1 && (r.trigger_type === trigger || r.trigger_type === 'both'))
+    .filter(
+      (r) =>
+        r.enabled === 1 &&
+        // 'any' = a user-initiated scan/preview: every enabled rule applies,
+        // whatever trigger it was saved with.
+        (trigger === 'any' || r.trigger_type === trigger || r.trigger_type === 'both')
+    )
     .sort((a, b) => a.priority - b.priority);
 
   for (const rule of candidateRules) {
@@ -241,5 +227,3 @@ async function evaluate(
 
   return null;
 }
-
-module.exports = { evaluate, evaluateCondition };

@@ -25,6 +25,10 @@ import { Card, CardHeader, CardBody } from "../../components/ui/Card";
 import StatCard from "../../components/ui/StatCard";
 import { LoadingState } from "../../components/ui/Spinner";
 import Toggle from "../../components/Toggle";
+import Badge from "../../components/ui/Badge";
+import { useToast } from "../../components/Toast";
+import { DATA_CHANGED_EVENT } from "../../app/Layout";
+import { errorMessage } from "../../lib/errors";
 
 function formatRelativeTime(iso: string): string {
   const diffSec = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -40,6 +44,9 @@ function formatRelativeTime(iso: string): string {
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { addToast } = useToast();
+  // Applies to the next folder added: also organize files inside its subfolders.
+  const [includeSubfolders, setIncludeSubfolders] = useState(false);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [folders, setFolders] = useState<WatchedFolder[]>([]);
   const [recentOps, setRecentOps] = useState<Operation[]>([]);
@@ -63,17 +70,21 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadData();
+    // Reload when the watcher organizes something while this page is open.
+    const reload = () => loadData();
+    window.addEventListener(DATA_CHANGED_EVENT, reload);
+    return () => window.removeEventListener(DATA_CHANGED_EVENT, reload);
   }, []);
 
   async function handleAddFolder() {
     try {
       const selected = await window.electronAPI.showOpenDialog();
       if (selected) {
-        await addWatchedFolder(selected, false);
+        await addWatchedFolder(selected, includeSubfolders);
         loadData();
       }
-    } catch {
-      // dialog cancelled or backend unavailable
+    } catch (e) {
+      addToast({ type: "error", text: errorMessage(e) });
     }
   }
 
@@ -81,8 +92,8 @@ export default function Dashboard() {
     try {
       await removeWatchedFolder(id);
       loadData();
-    } catch {
-      // ignore errors
+    } catch (e) {
+      addToast({ type: "error", text: errorMessage(e) });
     }
   }
 
@@ -106,6 +117,15 @@ export default function Dashboard() {
         description="Overview of your file organization"
         actions={
           <>
+            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-fg-muted">
+              <input
+                type="checkbox"
+                checked={includeSubfolders}
+                onChange={(e) => setIncludeSubfolders(e.target.checked)}
+                className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent)]"
+              />
+              Include subfolders
+            </label>
             <Button
               variant="secondary"
               onClick={handleAddFolder}
@@ -172,6 +192,11 @@ export default function Dashboard() {
                       <span className="truncate text-sm text-fg" title={f.path}>
                         {f.path}
                       </span>
+                      {f.recursive && (
+                        <Badge tone="neutral" size="sm" className="shrink-0">
+                          + subfolders
+                        </Badge>
+                      )}
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
                       <Toggle
