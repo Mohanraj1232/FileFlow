@@ -13,7 +13,7 @@ Built with Electron, React, TypeScript and SQLite. It runs on Windows, macOS and
 - **Visual rule builder.** Build rules in the GUI, with no YAML or config files. Conditions can be grouped with AND/OR logic.
 - **Default rules.** A fresh install seeds a basic rule set that sorts documents, images, videos, audio, archives, code and installers into sensible folders.
 - **Folder watching.** New files are detected automatically. FileFlow waits for a file to finish writing before touching it, and it ignores in-progress downloads (`.crdownload`, `.part`, `.tmp` and similar).
-- **Preview before you apply.** Run a dry run to see exactly what would move and where, then apply it.
+- **Preview before you apply.** Run a dry run to see exactly what would move and where, then apply it. Apply runs the plan you reviewed, and each step is re-checked against the disk first.
 - **History and undo.** Every operation is recorded. Undo a whole batch or a single step.
 - **Unsorted inbox.** Files that match no rule are left alone. You can review them later, with no popups.
 - **Local only.** There is no telemetry, no account and no cloud. Your data lives in a local SQLite database.
@@ -39,7 +39,7 @@ Rules are evaluated in priority order (lower number first). By default the first
 | `rename` | Rename with a pattern. |
 | `trash` | Send to the OS Recycle Bin or Trash. |
 
-**Destination variables:** `{kind}` `{ext}` `{name}` `{year}` `{month}` `{date}` `{date:YYYY-MM-DD}` `{date:YYYY-MM}` `{date:YYYY}`
+**Destination variables:** `{root}` (the watched folder the file belongs to) `{kind}` `{ext}` `{name}` `{year}` `{month}` `{date}` `{date:YYYY-MM-DD}` `{date:YYYY-MM}` `{date:YYYY}`
 
 **Rename variables:** `{name}` `{name:clean}` `{name:lower}` `{name:slug}` `{ext}` `{kind}` `{date}`. The `clean` transform strips suffixes like `(1)` and ` - Copy`.
 
@@ -47,15 +47,21 @@ Rules are evaluated in priority order (lower number first). By default the first
 
 ## Safety guarantees
 
-A file tool that loses files is worse than no tool, so these rules are built in:
+A file tool that loses files is worse than no tool, so these rules are built in and covered by automated tests:
 
-1. **Files are never overwritten.** Name collisions get a numbered name such as `report (2).pdf`.
-2. **Files are never hard-deleted.** Delete means move to the OS Recycle Bin or Trash.
-3. **Cross-drive moves are verified.** When a plain rename fails across volumes, FileFlow copies the file, checks the size, and only then removes the original.
-4. **The journal is written before and after each step.** After a crash, steps left `pending` are reconciled on the next start.
-5. **Incomplete files are skipped.** Temp download extensions are ignored, and FileFlow waits until a file's size has stopped changing.
-6. **Operations run one at a time.** Steps go through a single serialized executor.
-7. **Undo checks first.** A step is only reverted when it is safe to do so.
+1. **Existing files are never overwritten.** If the destination name is taken, the new file gets a numbered name such as `report (2).pdf`. This is re-checked immediately before each move, not only when the plan is made.
+2. **You choose what happens on a name clash** (Settings): keep both (default), skip the file and leave it where it is, or remove the incoming file only when the existing one is byte-for-byte identical (otherwise both are kept).
+3. **Files are never hard-deleted.** Delete means move to the OS Recycle Bin or Trash.
+4. **Changed files are not touched.** If a file's size or modification time changed after the preview, that step is skipped.
+5. **Cross-drive moves are verified.** When a plain rename fails across volumes, FileFlow copies the file, compares SHA-256 hashes, and only then removes the original.
+6. **The journal is written before and after each step.** After a crash, steps left `pending` are reconciled on the next start.
+7. **Incomplete and hidden files are skipped.** Temp download extensions and dotfiles are ignored, and FileFlow waits until a file has stopped changing.
+8. **Files are not sorted twice.** Folders FileFlow fills (such as `Downloads/Documents`) are excluded from scans and watching, FileFlow's own moves and undo restores are not picked up again, and a loop breaker stops any path that keeps reappearing.
+9. **Operations run one at a time.** Watcher events go through a single serialized queue.
+10. **Undo checks first.** A step is only reverted when it is safe to do so (the file is still there, unchanged in size, and the original location is free).
+11. **Database upgrades keep a backup.** Before an existing database is migrated, a copy is saved next to it as `fileflow.db.bak-v<version>`.
+
+Moving a file to the Trash cannot be undone from inside FileFlow; restore it from the system Recycle Bin or Trash.
 
 ---
 
@@ -93,6 +99,8 @@ Installers are written to `release/`: NSIS on Windows, DMG on macOS and AppImage
 | `npm run dev` | Vite dev server only (UI in the browser, without the Electron backend) |
 | `npm run build` | Type-check and build the UI |
 | `npm run build:electron` | Compile the Electron main process |
+| `npm run typecheck` | Type-check the UI and the Electron main process |
+| `npm test` | Run the backend test suite (see [Testing](#testing)) |
 | `npm run electron:start` | Build everything and launch the app without installing it |
 
 ---
@@ -105,7 +113,7 @@ Installers are written to `release/`: NSIS on Windows, DMG on macOS and AppImage
 4. **Use Preview** to dry-run your rules against a folder and see the plan before anything moves.
 5. **Review History** to see what was moved. Undo a batch or a single file.
 6. **Check Unsorted** for files that matched no rule.
-7. **Open Settings** to change the theme, the default conflict policy, notification level, scan schedule and ignore patterns.
+7. **Open Settings** to change the theme, what happens when a file with the same name already exists, and which files and folders to ignore.
 
 ---
 
@@ -147,19 +155,26 @@ src/
   lib/               Types, theme and IPC command wrappers
 ```
 
+## Testing
+
+```bash
+npm test
+```
+
+The backend tests use Vitest and run under Electron's own Node, so the native `better-sqlite3` build matches the one the app ships with. Every test works on temporary directories and synthetic files, never on real user data. They cover rule evaluation, planning and conflict handling, execution and re-validation, undo, crash recovery, the watcher pipeline, repeated and recursive scans, and database migrations.
+
 **Tech stack:** Electron, React 18, TypeScript, Vite, Tailwind CSS 4, better-sqlite3, chokidar, picomatch, trash, lucide-react.
 
 ---
 
 ## Roadmap
 
-Some items below are in the design but not yet implemented:
+Some items below are in the design but not yet implemented. In particular, the settings screen does not yet offer a scan schedule or notification level because those are not wired up yet.
 
 - Age-based rules (`created_age`, `modified_age`) for scheduled scans
 - Duplicate detection with content hashing
 - Protected-path checks that refuse to watch system folders
 - System tray, autostart and auto-update
-- Automated tests and CI
 - Rule templates (for example Student, Developer, Designer)
 
 ---
