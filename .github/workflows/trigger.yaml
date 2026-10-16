@@ -1,0 +1,22 @@
+name: SchemaGuard upload
+on:
+  push:
+    branches: [main]
+    paths: ["data/**"]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: Mohanraj1232/schemaguard/integrations/github-action@main
+        with:
+          api-url: ${{ vars.SCHEMAGUARD_URL }}
+          api-key: ${{ secrets.SCHEMAGUARD_API_KEY }}
+          sources: |
+            data/orders/*=orders
+          fail-on: critical
