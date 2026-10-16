@@ -1,7 +1,7 @@
 name: SchemaGuard upload
 on:
   push:
-    branches: [master]
+    branches: [main ,master]
     paths: ["data/**"]
   workflow_dispatch: {}
 permissions:
