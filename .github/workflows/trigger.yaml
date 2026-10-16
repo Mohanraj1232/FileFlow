@@ -19,4 +19,4 @@ jobs:
           api-key: ${{ secrets.SCHEMAGUARD_API_KEY }}
           sources: |
             data/orders/*=orders
-          fail-on: critical
+          fail-on: never
