@@ -60,6 +60,49 @@ declare global {
       onDuplicateProgress: (
         callback: (summary: import("./lib/types").DuplicateScanSummary) => void,
       ) => () => void;
+      storageListScans: () => Promise<import("./lib/types").StorageScanSummary[]>;
+      storageStartScan: (
+        roots: string[],
+        options?: { include_hidden?: boolean; confirm_sensitive?: boolean },
+      ) => Promise<import("./lib/types").StorageScanSummary>;
+      storageGetScan: (scanId: number) => Promise<import("./lib/types").StorageScanSummary>;
+      storageCancelScan: (scanId: number) => Promise<{ cancelled: boolean }>;
+      storageDeleteScan: (scanId: number) => Promise<{ success: boolean }>;
+      storageGetReport: (
+        scanId: number,
+        folder?: string | null,
+      ) => Promise<import("./lib/types").StorageReport>;
+      storageQueryFiles: (
+        scanId: number,
+        filter: import("./lib/types").StorageFileFilter,
+        sort: import("./lib/types").StorageSort,
+        offset: number,
+        limit: number,
+      ) => Promise<import("./lib/types").StorageFilesPage>;
+      storageGetRecommendations: (
+        scanId: number,
+        oldMonths?: number,
+      ) => Promise<import("./lib/types").StorageRecommendations>;
+      storageGetRecommendationFiles: (
+        scanId: number,
+        recommendationId: string,
+        oldMonths: number,
+        offset: number,
+        limit: number,
+      ) => Promise<import("./lib/types").StorageFilesPage>;
+      storageGetDuplicateSavings: (
+        scanId: number,
+      ) => Promise<import("./lib/types").DuplicateSavings | null>;
+      storageCleanup: (
+        scanId: number,
+        paths: string[],
+        mode: import("./lib/types").RemoveMode,
+      ) => Promise<import("./lib/types").StorageCleanupResult>;
+      storageReveal: (scanId: number, filePath: string) => Promise<{ success: boolean }>;
+      /** Progress of the running storage scan. Returns an unsubscribe function. */
+      onStorageProgress: (
+        callback: (summary: import("./lib/types").StorageScanSummary) => void,
+      ) => () => void;
       /** Subscribe to files the watcher organized. Returns an unsubscribe function. */
       onFileProcessed: (
         callback: (event: import("./lib/types").FileProcessedEvent) => void,

@@ -6,6 +6,9 @@ import type {
 import type { FileRow, FileFilter, ScanRow } from './repo';
 import type { RunningScan } from './store';
 
+/** The database stores UTC timestamps without a zone marker; mark them so the UI does not read them as local time. */
+const utc = (stamp: string | null) => (stamp ? `${stamp}Z` : null);
+
 const iso = (ms: number | null) => (ms === null || ms === undefined ? null : new Date(ms).toISOString());
 
 export function toFileDto(r: FileRow): StorageFile {
@@ -30,8 +33,8 @@ export function rowToSummary(row: ScanRow): StorageScanSummary {
     scan_id: row.id,
     roots: row.roots,
     state: 'done',
-    started_at: row.started_at,
-    finished_at: row.finished_at,
+    started_at: utc(row.started_at),
+    finished_at: utc(row.finished_at),
     file_count: row.file_count,
     dir_count: row.dir_count,
     stored_bytes: row.stored_bytes,

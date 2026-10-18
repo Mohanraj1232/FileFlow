@@ -31,6 +31,7 @@ describe('buildReport', () => {
 
     expect(report.folder).toBeNull();
     expect(report.scan).toMatchObject({ state: 'done', file_count: 5, stored_bytes: 300 + 6 * MB + 10 });
+    expect(report.scan.finished_at).toMatch(/Z$/); // marked as UTC, so the UI shows the right local date
     expect(report.children.map((c) => [c.path, c.files])).toEqual([[root, 5]]); // the chosen root
     expect(report.by_kind.map((k) => k.kind)).toEqual(['video', 'document']); // .pdf, .txt are documents; sizes order
     expect(report.largest_files[0]).toMatchObject({ name: 'big.mp4', kind: 'video' });

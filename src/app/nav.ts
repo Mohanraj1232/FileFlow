@@ -6,6 +6,7 @@ import {
   Inbox,
   Settings2,
   Copy,
+  HardDrive,
   type LucideIcon,
 } from "lucide-react";
 
@@ -35,7 +36,10 @@ export const navGroups: NavGroup[] = [
   },
   {
     label: "Clean up",
-    items: [{ to: "/duplicates", label: "Duplicates", icon: Copy }],
+    items: [
+      { to: "/storage", label: "Storage", icon: HardDrive },
+      { to: "/duplicates", label: "Duplicates", icon: Copy },
+    ],
   },
   {
     label: "Activity",
