@@ -17,7 +17,17 @@ function protectedRoots(): string[] {
       if (v) roots.push(v);
     }
   } else if (process.platform === 'darwin') {
-    roots.push('/System', '/Library', '/usr', '/bin', '/sbin', '/private', '/cores');
+    // Deliberately NOT all of /private or /var: macOS keeps per-user temp and cache
+    // folders under /private/var/folders (what os.tmpdir() returns), and /etc, /tmp
+    // and /var are symlinks into /private. Only the genuinely system-owned parts are listed,
+    // in both their symlinked and real forms.
+    roots.push(
+      '/System', '/Library', '/usr', '/bin', '/sbin', '/cores',
+      '/etc', '/private/etc',
+      '/var/db', '/private/var/db',
+      '/var/root', '/private/var/root',
+      '/var/log', '/private/var/log'
+    );
   } else {
     roots.push('/etc', '/usr', '/bin', '/sbin', '/boot', '/proc', '/sys', '/dev', '/lib', '/lib64', '/run');
   }
@@ -39,10 +49,32 @@ function isInside(child: string, parent: string): boolean {
   return c === p || c.startsWith(p + '/');
 }
 
-/** True when `p` is, or is inside, an OS-critical or application-critical folder. */
+/**
+ * True when `p` is, or is inside, an OS-critical or application-critical folder.
+ * Both the path as given and its real location (symlinks resolved) are checked, so a
+ * link such as /etc -> /private/etc, or a folder symlinked into a protected area, is caught.
+ */
 export function isProtectedPath(p: string): boolean {
+  // Each protected root in the form given AND its real location, so a symlinked root matches either way.
+  const protectedList = [...protectedRoots(), ...extraProtected].flatMap((r) => {
+    const given = path.resolve(r);
+    try {
+      const real = fs.realpathSync.native(given);
+      return real === given ? [given] : [given, real];
+    } catch {
+      return [given];
+    }
+  });
+  const matches = (candidate: string) => protectedList.some((root) => isInside(candidate, root));
+
   const resolved = path.resolve(p);
-  return [...protectedRoots(), ...extraProtected].some((root) => isInside(resolved, path.resolve(root)));
+  if (matches(resolved)) return true;
+
+  try {
+    return matches(fs.realpathSync.native(resolved));
+  } catch {
+    return false; // does not exist (yet): nothing further to resolve
+  }
 }
 
 /** Folder names that hold system bookkeeping or already-removed files; never scanned. */

@@ -239,12 +239,12 @@ describe('files that changed after the scan are not touched', () => {
 });
 
 describe('hard links', () => {
-  it('leaves a hard link of a kept file alone (it would free no space)', async () => {
+  it('leaves a hard link of a kept file alone (it would free no space)', async (ctx) => {
     const root = makeTmpTree({ 'keep.bin': 'x'.repeat(300), 'copy.bin': 'x'.repeat(300) });
     try {
       fs.linkSync(path.join(root, 'keep.bin'), path.join(root, 'link-of-keep.bin'));
     } catch {
-      return;
+      ctx.skip(); // filesystem without hard links: reported as skipped, not silently passed
     }
     const entry = await finishedScan([root]);
     const out = await resolveDuplicates(db, entry, keepOnly(entry, 'keep.bin'), 'trash', null);

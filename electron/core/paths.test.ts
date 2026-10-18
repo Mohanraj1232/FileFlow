@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { isProtectedPath, sensitiveReason, checkRoots, protectAppDataDir } from './paths';
@@ -23,6 +24,37 @@ describe('isProtectedPath', () => {
   it('does not protect ordinary user folders', () => {
     expect(isProtectedPath(makeTmpTree())).toBe(false);
     expect(isProtectedPath(path.join(os.homedir(), 'Documents'))).toBe(false);
+  });
+
+  // Regression: macOS temp folders live under /private/var/folders. A blanket "/private" entry
+  // marked every file in them as a protected system file, so scans found nothing and removals
+  // were all skipped (caught by CI on macOS).
+  it('never treats the OS temp folder, or its real location, as protected', () => {
+    expect(isProtectedPath(os.tmpdir())).toBe(false);
+    expect(isProtectedPath(fs.realpathSync.native(os.tmpdir()))).toBe(false);
+    expect(isProtectedPath(path.join(fs.realpathSync.native(os.tmpdir()), 'fileflow-x', 'a', 'b.txt'))).toBe(false);
+  });
+
+  it('on macOS protects /etc in both its symlinked and real form, but not per-user temp folders', () => {
+    if (process.platform !== 'darwin') return;
+    expect(isProtectedPath('/etc/hosts')).toBe(true);
+    expect(isProtectedPath('/private/etc/hosts')).toBe(true);
+    expect(isProtectedPath('/private/var/db/x')).toBe(true);
+    expect(isProtectedPath('/private/var/folders/zz/abc/T/file.txt')).toBe(false);
+    expect(isProtectedPath('/Users/someone/Documents')).toBe(false);
+  });
+
+  it('catches a symlink that leads into a protected folder', (ctx) => {
+    const target = process.platform === 'win32' ? (process.env.SystemRoot ?? 'C:\\Windows') : '/etc';
+    const dir = makeTmpTree();
+    const link = path.join(dir, 'sneaky');
+    try {
+      fs.symlinkSync(target, link, 'junction');
+    } catch {
+      ctx.skip(); // cannot create links here: reported as skipped
+    }
+    expect(isProtectedPath(path.join(link, 'anything'))).toBe(false); // does not exist inside, nothing to resolve
+    expect(isProtectedPath(link)).toBe(true);
   });
 
   it('is not fooled by a similarly named sibling folder', () => {
