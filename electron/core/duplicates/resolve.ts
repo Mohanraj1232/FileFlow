@@ -3,12 +3,13 @@ import path from 'node:path';
 import { hashFile } from '../hash';
 import { executePlan, type WrittenTracker } from '../executor';
 import * as journal from '../journal';
-import { pathKey, resolveConflict, type PlannedStep } from '../planner';
-import { isProtectedPath, QUARANTINE_DIR_NAME } from '../paths';
+import { pathKey, type PlannedStep } from '../planner';
+import { isProtectedPath } from '../paths';
+import { RemovalPlanner, type RemoveMode } from '../quarantine';
 import { removeFromResult, type ScanEntry } from './store';
 import type { DupFile } from './scan';
 
-export type RemoveMode = 'quarantine' | 'trash';
+export type { RemoveMode };
 
 /** For one group: which files the user wants to KEEP. Everything else in the group is a removal candidate. */
 export interface Decision {
@@ -31,18 +32,6 @@ export interface ResolveOutcome {
 
 /** Thrown for a malformed request, before anything has been touched. */
 export class InvalidDecisionError extends Error {}
-
-const timestamp = (d: Date) =>
-  d.toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '');
-
-/** The scanned folder that contains `filePath`, so quarantine lands on the same volume (an instant rename). */
-function containingRoot(roots: string[], filePath: string): string {
-  const key = pathKey(filePath);
-  const matches = roots
-    .filter((r) => key.startsWith(pathKey(r).replace(/\/+$/, '') + '/'))
-    .sort((a, b) => b.length - a.length);
-  return matches[0] ?? path.dirname(filePath);
-}
 
 async function verifiedHash(file: { path: string; size: number; mtimeMs?: number }): Promise<string | null> {
   try {
@@ -105,8 +94,7 @@ export async function resolveDuplicates(
   const skipped: SkippedFile[] = [];
   const steps: PlannedStep[] = [];
   const planned: { file: DupFile; group: string }[] = [];
-  const claimed = new Set<string>();
-  const stamp = timestamp(now);
+  const removal = new RemovalPlanner(entry.roots, mode, 'Duplicate cleanup', now);
 
   for (const d of decisions) {
     const group = groups.get(d.hash)!;
@@ -158,24 +146,12 @@ export async function resolveDuplicates(
         continue;
       }
 
-      let dst: string | null = null;
-      if (mode === 'quarantine') {
-        const base = path.join(containingRoot(entry.roots, file.path), QUARANTINE_DIR_NAME, stamp, group.hash.slice(0, 12));
-        dst = (await resolveConflict(path.join(base, file.name), claimed, 'auto_rename')).path;
-        claimed.add(pathKey(dst));
-      }
-
-      steps.push({
-        rule_id: null,
-        rule_name: 'Duplicate cleanup',
-        action_type: mode === 'quarantine' ? 'move' : 'trash',
-        src_path: file.path,
-        dst_path: dst,
-        file_size: file.size,
-        file_mtime: st.mtime.toISOString().slice(0, 19),
-        selected: true,
-        policy: 'auto_rename',
-      });
+      steps.push(
+        await removal.step(
+          { path: file.path, name: file.name, size: file.size, mtime: st.mtime },
+          group.hash.slice(0, 12)
+        )
+      );
       planned.push({ file, group: group.hash });
     }
   }

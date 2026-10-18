@@ -198,10 +198,71 @@ function migrateV2(db: any): void {
   `);
 }
 
+/**
+ * v3: storage inventory (Phase 2). One finished scan is kept per set of folders; a re-scan
+ * builds a new scan alongside the old one and swaps it in only when it completes, so a
+ * cancelled or failed scan never destroys the previous report. Rows hold file metadata
+ * only (path, size, dates, type): never file contents.
+ *
+ *  - size          the file's own size.
+ *  - stored_size   what it adds to disk usage: 0 for the second and later hard links to the
+ *                  same data, so folder totals never count shared storage twice.
+ *  - links         the file's hard-link count (1 for ordinary files).
+ */
+function migrateV3(db: any): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS inventory_scans (
+      id INTEGER PRIMARY KEY,
+      roots TEXT NOT NULL,
+      roots_key TEXT NOT NULL UNIQUE,
+      state TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      finished_at TEXT,
+      file_count INTEGER NOT NULL DEFAULT 0,
+      dir_count INTEGER NOT NULL DEFAULT 0,
+      stored_bytes INTEGER NOT NULL DEFAULT 0,
+      logical_bytes INTEGER NOT NULL DEFAULT 0,
+      error_count INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS inventory_files (
+      id INTEGER PRIMARY KEY,
+      scan_id INTEGER NOT NULL REFERENCES inventory_scans(id) ON DELETE CASCADE,
+      root TEXT NOT NULL,
+      path TEXT NOT NULL,
+      dir TEXT NOT NULL,
+      name TEXT NOT NULL,
+      ext TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      stored_size INTEGER NOT NULL,
+      links INTEGER NOT NULL DEFAULT 1,
+      mtime INTEGER NOT NULL,
+      atime INTEGER,
+      birthtime INTEGER
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_inv_files_path ON inventory_files(scan_id, path);
+    CREATE INDEX IF NOT EXISTS idx_inv_files_size ON inventory_files(scan_id, stored_size DESC);
+    CREATE INDEX IF NOT EXISTS idx_inv_files_kind ON inventory_files(scan_id, kind);
+    CREATE INDEX IF NOT EXISTS idx_inv_files_mtime ON inventory_files(scan_id, mtime);
+    CREATE INDEX IF NOT EXISTS idx_inv_files_dir ON inventory_files(scan_id, dir);
+
+    CREATE TABLE IF NOT EXISTS inventory_errors (
+      id INTEGER PRIMARY KEY,
+      scan_id INTEGER NOT NULL REFERENCES inventory_scans(id) ON DELETE CASCADE,
+      path TEXT NOT NULL,
+      error TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_inv_errors_scan ON inventory_errors(scan_id);
+  `);
+}
+
 /** Ordered list of schema migrations. Append new ones; never edit shipped ones. */
 export const migrations: Migration[] = [
   { version: 1, name: 'initial schema + default rules', up: migrateV1 },
   { version: 2, name: 'conflict policy cleanup + journal indexes', up: migrateV2 },
+  { version: 3, name: 'storage inventory tables', up: migrateV3 },
 ];
 
 export function getSchemaVersion(db: any): number {

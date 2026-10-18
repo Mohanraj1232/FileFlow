@@ -4,6 +4,8 @@ import path from 'node:path';
 import { afterEach } from 'vitest';
 import { openMemoryDb } from '../core/db';
 import type { PlannedStep } from '../core/planner';
+import { scanInventory } from '../core/storage/inventory';
+import { createScan, insertFiles, finishScan } from '../core/storage/repo';
 
 const created: string[] = [];
 
@@ -120,4 +122,42 @@ export function stepFor(
     selected: true,
     ...extra,
   };
+}
+
+/** Scan real folders into the database exactly as a finished storage scan would, and return its id. */
+export async function buildInventory(db: any, roots: string[], opts: { includeHidden?: boolean } = {}): Promise<number> {
+  const scanId = createScan(db, roots);
+  const result = await scanInventory({
+    roots,
+    includeHidden: opts.includeHidden,
+    onBatch: (files) => insertFiles(db, scanId, files),
+  });
+  finishScan(db, scanId, {
+    fileCount: result.filesScanned,
+    dirCount: result.dirsScanned,
+    storedBytes: result.storedBytes,
+    logicalBytes: result.logicalBytes,
+    errorCount: result.errorCount,
+  });
+  return scanId;
+}
+
+/** Try to create a hard link; false when the filesystem or permissions do not allow it. */
+export function tryHardLink(target: string, link: string): boolean {
+  try {
+    fs.linkSync(target, link);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Try to create a symlink/junction; false when the OS or permissions do not allow it. */
+export function trySymlink(target: string, link: string, type: 'file' | 'junction'): boolean {
+  try {
+    fs.symlinkSync(target, link, type);
+    return true;
+  } catch {
+    return false;
+  }
 }

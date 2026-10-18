@@ -31,6 +31,11 @@ import { checkRoots } from './paths';
 import { DuplicateScanStore } from './duplicates/store';
 import { resolveDuplicates, InvalidDecisionError, type Decision } from './duplicates/resolve';
 import { toSummaryDto, toGroupDto } from './duplicates/dto';
+import { StorageScanStore } from './storage/store';
+import * as storage from './storage/service';
+import { runningToSummary } from './storage/dto';
+import * as storageRepo from './storage/repo';
+import { cleanupFiles, InvalidCleanupError } from './storage/cleanup';
 import { normalizePolicy } from './planner';
 import type {
   DashboardStats,
@@ -38,6 +43,7 @@ import type {
   DuplicateScanOptions,
   DuplicateGroupsPage,
   ResolveDuplicatesResult,
+  StorageCleanupResult,
 } from '../shared/contract';
 
 const SETTING_KEYS = [
@@ -165,6 +171,7 @@ export function registerHandlers(
 ): void {
   const planCache = new PlanCache();
   const dupStore = new DuplicateScanStore();
+  const storageStore = new StorageScanStore();
 
   // ===== Watched Folders =====
 
@@ -484,6 +491,114 @@ export function registerHandlers(
   ipcMain.handle('reveal_duplicate_file', (_event, scanId: string, filePath: string) => {
     const entry = getScan(scanId);
     const known = entry.result?.groups.some((g) => g.files.some((f) => f.path === filePath));
+    if (!known) throw new Error('That file is not part of this scan.');
+    shell.showItemInFolder(filePath);
+    return { success: true };
+  });
+
+  // ===== Storage analysis =====
+
+  const pushStorageProgress = (scan: Parameters<typeof runningToSummary>[0]) => {
+    const win = getMainWindow();
+    if (win && !win.isDestroyed()) win.webContents.send('storage-progress', runningToSummary(scan));
+  };
+
+  const scanIdOf = (value: unknown): number => {
+    const id = Number(value);
+    if (!Number.isInteger(id) || id < 1) throw new Error('That scan is no longer available. Run a new scan.');
+    return id;
+  };
+
+  ipcMain.handle('storage_list_scans', () => storage.listSummaries(db, storageStore));
+
+  ipcMain.handle(
+    'storage_start_scan',
+    (_event, roots: string[], options?: { include_hidden?: boolean; confirm_sensitive?: boolean }) => {
+      const list = validateRoots(roots);
+      const check = checkRoots(list);
+      if (check.missing.length) throw new Error(`Folder not found: ${check.missing[0]}`);
+      if (check.protected.length) {
+        throw new Error(`FileFlow does not scan system folders: ${check.protected.join(', ')}`);
+      }
+      if (check.sensitive.length && !options?.confirm_sensitive) {
+        throw new Error(`Confirmation required to scan: ${check.sensitive.map((s) => s.path).join(', ')}`);
+      }
+      const scan = storageStore.start({
+        db,
+        roots: list,
+        includeHidden: options?.include_hidden !== false,
+        isIgnored: compileIgnore(parseIgnorePatterns(repo.getSetting(db, 'ignore_patterns'))),
+        onUpdate: pushStorageProgress,
+      });
+      return runningToSummary(scan);
+    }
+  );
+
+  ipcMain.handle('storage_get_scan', (_event, scanId: number) =>
+    storage.getSummary(db, storageStore, scanIdOf(scanId))
+  );
+
+  ipcMain.handle('storage_cancel_scan', (_event, scanId: number) => ({
+    cancelled: storageStore.cancel(scanIdOf(scanId)),
+  }));
+
+  ipcMain.handle('storage_delete_scan', (_event, scanId: number) => {
+    const id = scanIdOf(scanId);
+    if (storageStore.get(id)?.state === 'running') throw new Error('Cancel the scan before deleting it.');
+    storageRepo.deleteScan(db, id);
+    return { success: true };
+  });
+
+  ipcMain.handle('storage_get_report', (_event, scanId: number, folder?: string | null) =>
+    storage.buildReport(db, scanIdOf(scanId), typeof folder === 'string' && folder ? folder : null)
+  );
+
+  ipcMain.handle(
+    'storage_query_files',
+    (_event, scanId: number, filter: unknown, sort: unknown, offset: unknown, limit: unknown) =>
+      storage.filesPage(db, scanIdOf(scanId), filter, sort, offset, limit)
+  );
+
+  ipcMain.handle('storage_get_recommendations', (_event, scanId: number, oldMonths?: number) =>
+    storage.recommendations(db, scanIdOf(scanId), oldMonths)
+  );
+
+  ipcMain.handle(
+    'storage_get_recommendation_files',
+    (_event, scanId: number, recommendationId: string, oldMonths: unknown, offset: unknown, limit: unknown) =>
+      storage.recommendationPage(db, scanIdOf(scanId), recommendationId, oldMonths, offset, limit)
+  );
+
+  ipcMain.handle('storage_get_duplicate_savings', (_event, scanId: number) =>
+    storage.duplicateSavings(db, scanIdOf(scanId), dupStore)
+  );
+
+  ipcMain.handle(
+    'storage_cleanup',
+    async (_event, scanId: number, paths: unknown, mode: string): Promise<StorageCleanupResult> => {
+      const row = storageRepo.getScan(db, scanIdOf(scanId));
+      if (!row) throw new Error('That scan is no longer available. Run a new scan.');
+      try {
+        const out = await cleanupFiles(db, row, paths, mode as 'quarantine' | 'trash', recentlyWritten);
+        return {
+          operation:
+            out.operationId === null
+              ? null
+              : db.prepare('SELECT * FROM operations WHERE id = ?').get(out.operationId),
+          removed_count: out.removed.length,
+          reclaimed_bytes: out.reclaimedBytes,
+          skipped: out.skipped,
+        };
+      } catch (err) {
+        if (err instanceof InvalidCleanupError) throw new Error(err.message);
+        throw err;
+      }
+    }
+  );
+
+  // Only files this scan recorded can be revealed: the renderer cannot ask to open arbitrary paths.
+  ipcMain.handle('storage_reveal', (_event, scanId: number, filePath: string) => {
+    const known = typeof filePath === 'string' && storageRepo.getFilesByPaths(db, scanIdOf(scanId), [filePath]).has(filePath);
     if (!known) throw new Error('That file is not part of this scan.');
     shell.showItemInFolder(filePath);
     return { success: true };

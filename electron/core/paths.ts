@@ -150,3 +150,8 @@ export function checkRoots(roots: string[]): RootCheck {
   }
   return result;
 }
+
+/** Same set of folders, same key, regardless of order or letter case on case-insensitive systems. */
+export function rootsKey(roots: string[]): string {
+  return [...new Set(roots.map(pathKey))].sort().join('\n');
+}

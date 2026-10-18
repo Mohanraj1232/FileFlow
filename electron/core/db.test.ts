@@ -123,6 +123,53 @@ describe('upgrading a v1 database (existing users)', () => {
   });
 });
 
+describe('v3: storage inventory tables', () => {
+  it('are created, and deleting a scan cascades to its files and errors', () => {
+    const db = openMemoryDb();
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r: any) => r.name);
+    expect(tables).toEqual(expect.arrayContaining(['inventory_scans', 'inventory_files', 'inventory_errors']));
+
+    db.prepare("INSERT INTO inventory_scans (id, roots, roots_key, state, started_at) VALUES (1, '[]', 'k', 'done', 'now')").run();
+    db.prepare("INSERT INTO inventory_files (scan_id, root, path, dir, name, ext, kind, size, stored_size, mtime) VALUES (1, 'r', 'r/a', 'r', 'a', '', 'other', 1, 1, 0)").run();
+    db.prepare("INSERT INTO inventory_errors (scan_id, path, error) VALUES (1, 'p', 'e')").run();
+    db.prepare('DELETE FROM inventory_scans WHERE id = 1').run();
+    expect(db.prepare('SELECT COUNT(*) c FROM inventory_files').get().c).toBe(0);
+    expect(db.prepare('SELECT COUNT(*) c FROM inventory_errors').get().c).toBe(0);
+    db.close();
+  });
+
+  it('one file path per scan, and one scan per set of folders', () => {
+    const db = openMemoryDb();
+    db.prepare("INSERT INTO inventory_scans (id, roots, roots_key, state, started_at) VALUES (1, '[]', 'k', 'done', 'now')").run();
+    const insert = () => db.prepare("INSERT INTO inventory_files (scan_id, root, path, dir, name, ext, kind, size, stored_size, mtime) VALUES (1, 'r', 'r/a', 'r', 'a', '', 'other', 1, 1, 0)").run();
+    insert();
+    expect(insert).toThrow(/UNIQUE/);
+    expect(() => db.prepare("INSERT INTO inventory_scans (roots, roots_key, state, started_at) VALUES ('[]', 'k', 'done', 'now')").run()).toThrow(/UNIQUE/);
+    db.close();
+  });
+
+  it('upgrading a v2 database keeps its data and adds the tables', () => {
+    const db: any = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    db.transaction(() => {
+      migrations[0].up(db);
+      db.prepare('INSERT INTO schema_version (version) VALUES (1)').run();
+    })();
+    runMigrations(db); // v1 -> latest in one go
+    // Pretend we were at v2 and only v3 is pending: re-run the migration path from a clean v2 state.
+    db.exec('DROP TABLE inventory_errors; DROP TABLE inventory_files; DROP TABLE inventory_scans;');
+    db.prepare('UPDATE schema_version SET version = 2').run();
+    const rulesBefore = db.prepare('SELECT COUNT(*) c FROM rules').get().c;
+
+    runMigrations(db);
+
+    expect(getSchemaVersion(db)).toBe(LATEST);
+    expect(db.prepare('SELECT COUNT(*) c FROM rules').get().c).toBe(rulesBefore);
+    expect(db.prepare("SELECT COUNT(*) c FROM sqlite_master WHERE name = 'inventory_files'").get().c).toBe(1);
+    db.close();
+  });
+});
+
 describe('backup before upgrading', () => {
   it('copies the database file as .bak-v1 before applying migrations', () => {
     const dir = makeTmpTree();

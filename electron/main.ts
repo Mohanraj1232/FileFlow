@@ -14,6 +14,7 @@ import { loadRules, getSetting } from './core/rules-repo';
 import { managedDirs, isInManagedDir } from './core/planner';
 import { compileIgnore, parseIgnorePatterns } from './core/ignore';
 import { protectAppDataDir } from './core/paths';
+import { purgeUnfinished } from './core/storage/repo';
 import type { FileProcessedEvent } from './shared/contract';
 
 let mainWindow: BrowserWindow | null = null;
@@ -165,6 +166,9 @@ app.whenReady().then(() => {
 
   // Recover any pending operations from a previous crash
   recoverPending(db);
+
+  // A storage scan interrupted by a quit or crash never published a report: drop its partial rows.
+  purgeUnfinished(db);
 
   // One tracker shared by the executor, the undo service and the watcher,
   // so files FileFlow just wrote or restored are not picked up again.
