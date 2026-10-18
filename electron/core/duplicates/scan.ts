@@ -195,47 +195,54 @@ export async function scanDuplicates(options: ScanOptions): Promise<ScanResult> 
           if (++counter % 200 === 0) await yieldToEventLoop();
 
           const full = path.join(dir, entry.name);
-          if (entry.isSymbolicLink()) continue; // never follow links out of the scanned folders
           if (!options.includeHidden && entry.name.startsWith('.')) continue;
 
-          if (entry.isDirectory()) {
+          // Classify with lstat rather than the Dirent type: lstat never follows a link, and
+          // it reports Windows junctions as links, which the directory-entry type from
+          // opendir does not reliably do (a junction was followed out of the scanned folder
+          // on Windows CI). Links are never followed; their targets are not part of the scan.
+          let st: fs.BigIntStats;
+          try {
+            st = await fs.promises.lstat(full, { bigint: true });
+          } catch (err) {
+            fail(full, err);
+            continue;
+          }
+          if (st.isSymbolicLink()) continue;
+
+          if (st.isDirectory()) {
             if (SKIPPED_DIR_NAMES.has(entry.name)) continue;
             if (isProtectedPath(full)) continue;
             if (options.isIgnored?.(full, root)) continue;
             stack.push(full);
-          } else if (entry.isFile()) {
+          } else if (st.isFile()) {
             if (shouldIgnoreFile(full)) continue;
             if (options.isIgnored?.(full, root)) continue;
             const key = pathKey(full);
             if (seen.has(key)) continue; // overlapping roots
             seen.add(key);
 
-            try {
-              const st = await fs.promises.stat(full, { bigint: true });
-              const size = Number(st.size);
-              if (size < minSize) continue;
+            const size = Number(st.size);
+            if (size < minSize) continue;
 
-              progress.filesSeen++;
-              progress.bytesSeen += size;
-              stats.filesScanned++;
-              stats.bytesScanned += size;
-              progress.currentPath = full;
-              emit();
+            progress.filesSeen++;
+            progress.bytesSeen += size;
+            stats.filesScanned++;
+            stats.bytesScanned += size;
+            progress.currentPath = full;
+            emit();
 
-              const dup: DupFile = {
-                path: full,
-                name: entry.name,
-                size,
-                mtimeMs: Number(st.mtimeMs),
-                linkKey: st.ino !== 0n ? `${st.dev}:${st.ino}` : `path:${key}`,
-                hashSource: 'computed',
-              };
-              const bucket = bySize.get(size);
-              if (bucket) bucket.push(dup);
-              else bySize.set(size, [dup]);
-            } catch (err) {
-              fail(full, err);
-            }
+            const dup: DupFile = {
+              path: full,
+              name: entry.name,
+              size,
+              mtimeMs: Number(st.mtimeMs),
+              linkKey: st.ino !== 0n ? `${st.dev}:${st.ino}` : `path:${key}`,
+              hashSource: 'computed',
+            };
+            const bucket = bySize.get(size);
+            if (bucket) bucket.push(dup);
+            else bySize.set(size, [dup]);
           }
         }
       } catch (err) {

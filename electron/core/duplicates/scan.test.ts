@@ -9,6 +9,26 @@ import { makeTmpTree } from '../../test/helpers';
 const names = (g: { files: { path: string }[] }, root: string) =>
   g.files.map((f) => path.relative(root, f.path).replace(/\\/g, '/')).sort();
 
+/** Try to create a hard link; false when the filesystem or permissions do not allow it. */
+function tryHardLink(target: string, link: string): boolean {
+  try {
+    fs.linkSync(target, link);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Try to create a symlink/junction; false when the OS or permissions do not allow it. */
+function trySymlink(target: string, link: string, type: 'file' | 'junction'): boolean {
+  try {
+    fs.symlinkSync(target, link, type);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** A hash cache that records what was asked of it. */
 function memoryCache() {
   const store = new Map<string, string>();
@@ -130,13 +150,9 @@ describe('space accounting', () => {
     expect(stats.duplicateFiles).toBe(3);
   });
 
-  it('hard links to the same data are not counted as savings', async () => {
+  it('hard links to the same data are not counted as savings', async (ctx) => {
     const root = makeTmpTree({ 'orig.bin': 'x'.repeat(500), 'real-copy.bin': 'x'.repeat(500) });
-    try {
-      fs.linkSync(path.join(root, 'orig.bin'), path.join(root, 'link.bin'));
-    } catch {
-      return; // filesystem without hard links
-    }
+    if (!tryHardLink(path.join(root, 'orig.bin'), path.join(root, 'link.bin'))) ctx.skip();
     const { groups } = await scanDuplicates({ roots: [root] });
     expect(groups).toHaveLength(1);
     expect(groups[0].files).toHaveLength(3);
@@ -144,13 +160,9 @@ describe('space accounting', () => {
     expect(groups[0].reclaimableBytes).toBe(500);
   });
 
-  it('files that are only hard links of each other are not a duplicate group', async () => {
+  it('files that are only hard links of each other are not a duplicate group', async (ctx) => {
     const root = makeTmpTree({ 'orig.bin': 'x'.repeat(500) });
-    try {
-      fs.linkSync(path.join(root, 'orig.bin'), path.join(root, 'link.bin'));
-    } catch {
-      return;
-    }
+    if (!tryHardLink(path.join(root, 'orig.bin'), path.join(root, 'link.bin'))) ctx.skip();
     const { groups } = await scanDuplicates({ roots: [root] });
     expect(groups).toEqual([]);
   });
@@ -198,18 +210,38 @@ describe('what is (not) scanned', () => {
     expect((await scanDuplicates({ roots: [root] })).groups).toEqual([]);
   });
 
-  it('does not follow symlinks out of the scanned folder', async () => {
+  // Links are tested separately so one unavailable kind (a file symlink needs admin rights or
+  // Developer Mode on Windows) does not hide the other. An unavailable kind is reported as a
+  // SKIP in the test output rather than silently passing.
+  it('does not follow a symlinked or junctioned folder out of the scanned folder', async (ctx) => {
+    const outside = makeTmpTree({ 'secret.txt': 'same', 'deeper/also-secret.txt': 'same' });
+    const root = makeTmpTree({ 'mine.txt': 'same' });
+    if (!trySymlink(outside, path.join(root, 'link'), 'junction')) ctx.skip();
+
+    const { groups, stats } = await scanDuplicates({ roots: [root] });
+    expect(groups).toEqual([]);
+    expect(stats.filesScanned).toBe(1); // only mine.txt; nothing reached through the link
+  });
+
+  it('does not follow a symlinked file out of the scanned folder', async (ctx) => {
     const outside = makeTmpTree({ 'secret.txt': 'same' });
     const root = makeTmpTree({ 'mine.txt': 'same' });
-    try {
-      fs.symlinkSync(outside, path.join(root, 'link'), 'junction');
-      fs.symlinkSync(path.join(outside, 'secret.txt'), path.join(root, 'file-link.txt'), 'file');
-    } catch {
-      return; // symlinks not permitted here
-    }
+    if (!trySymlink(path.join(outside, 'secret.txt'), path.join(root, 'file-link.txt'), 'file')) ctx.skip();
+
     const { groups, stats } = await scanDuplicates({ roots: [root] });
     expect(groups).toEqual([]);
     expect(stats.filesScanned).toBe(1);
+  });
+
+  it('a scanned folder that is itself reached through a link is still scanned', async (ctx) => {
+    const real = makeTmpTree({ 'a.txt': 'same', 'b.txt': 'same' });
+    const holder = makeTmpTree();
+    const link = path.join(holder, 'via-link');
+    if (!trySymlink(real, link, 'junction')) ctx.skip();
+
+    // The user chose this folder, so its own files are scanned; links found INSIDE are not followed.
+    const { groups } = await scanDuplicates({ roots: [link] });
+    expect(groups).toHaveLength(1);
   });
 
   it('reports an unreadable folder instead of failing the whole scan', async () => {

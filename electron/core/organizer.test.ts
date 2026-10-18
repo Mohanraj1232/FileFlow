@@ -223,13 +223,13 @@ describe('walkFolder', () => {
     expect(walk(root, false)).toEqual(['keep.pdf']);
   });
 
-  it('does not follow symlinked directories', function () {
+  it('does not follow symlinked directories', (ctx) => {
     const root = makeTmpTree({ 'real/inner.pdf': 'x' });
     const outside = makeTmpTree({ 'secret.pdf': 'x' });
     try {
       fs.symlinkSync(outside, path.join(root, 'link'), 'junction');
     } catch {
-      return; // symlinks not permitted in this environment
+      ctx.skip(); // reported as skipped, not silently passed
     }
     expect(walk(root, true)).toEqual(['real/inner.pdf']);
   });
