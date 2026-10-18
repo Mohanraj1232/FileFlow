@@ -18,6 +18,14 @@ import type {
   RemoveMode,
   ResolveDuplicatesResult,
   RootCheck,
+  StorageScanSummary,
+  StorageReport,
+  StorageFileFilter,
+  StorageSort,
+  StorageFilesPage,
+  StorageRecommendations,
+  DuplicateSavings,
+  StorageCleanupResult,
 } from "./types";
 
 export async function getWatchedFolders(): Promise<WatchedFolder[]> {
@@ -210,4 +218,81 @@ export function onDuplicateProgress(
   callback: (summary: DuplicateScanSummary) => void,
 ): () => void {
   return window.electronAPI.onDuplicateProgress(callback);
+}
+
+// ---- Storage analysis ----------------------------------------------------
+
+export async function storageListScans(): Promise<StorageScanSummary[]> {
+  return window.electronAPI.storageListScans();
+}
+
+export async function storageStartScan(
+  roots: string[],
+  options?: { include_hidden?: boolean; confirm_sensitive?: boolean },
+): Promise<StorageScanSummary> {
+  return window.electronAPI.storageStartScan(roots, options);
+}
+
+export async function storageGetScan(scanId: number): Promise<StorageScanSummary> {
+  return window.electronAPI.storageGetScan(scanId);
+}
+
+export async function storageCancelScan(scanId: number): Promise<{ cancelled: boolean }> {
+  return window.electronAPI.storageCancelScan(scanId);
+}
+
+export async function storageDeleteScan(scanId: number): Promise<void> {
+  await window.electronAPI.storageDeleteScan(scanId);
+}
+
+export async function storageGetReport(scanId: number, folder?: string | null): Promise<StorageReport> {
+  return window.electronAPI.storageGetReport(scanId, folder ?? null);
+}
+
+export async function storageQueryFiles(
+  scanId: number,
+  filter: StorageFileFilter,
+  sort: StorageSort,
+  offset: number,
+  limit: number,
+): Promise<StorageFilesPage> {
+  return window.electronAPI.storageQueryFiles(scanId, filter, sort, offset, limit);
+}
+
+export async function storageGetRecommendations(
+  scanId: number,
+  oldMonths?: number,
+): Promise<StorageRecommendations> {
+  return window.electronAPI.storageGetRecommendations(scanId, oldMonths);
+}
+
+export async function storageGetRecommendationFiles(
+  scanId: number,
+  recommendationId: string,
+  oldMonths: number,
+  offset: number,
+  limit: number,
+): Promise<StorageFilesPage> {
+  return window.electronAPI.storageGetRecommendationFiles(scanId, recommendationId, oldMonths, offset, limit);
+}
+
+export async function storageGetDuplicateSavings(scanId: number): Promise<DuplicateSavings | null> {
+  return window.electronAPI.storageGetDuplicateSavings(scanId);
+}
+
+/** Remove the chosen files: quarantine (undoable from History) or the system trash. */
+export async function storageCleanup(
+  scanId: number,
+  paths: string[],
+  mode: RemoveMode,
+): Promise<StorageCleanupResult> {
+  return window.electronAPI.storageCleanup(scanId, paths, mode);
+}
+
+export async function storageReveal(scanId: number, filePath: string): Promise<void> {
+  await window.electronAPI.storageReveal(scanId, filePath);
+}
+
+export function onStorageProgress(callback: (summary: StorageScanSummary) => void): () => void {
+  return window.electronAPI.onStorageProgress(callback);
 }

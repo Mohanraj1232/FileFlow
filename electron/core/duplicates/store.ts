@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { rootsKey } from '../paths';
 import { scanDuplicates, type DupGroup, type HashCache, type ScanProgress, type ScanResult, type ScanOptions } from './scan';
 
 /**
@@ -117,6 +118,14 @@ export class DuplicateScanStore {
 
   get(id: string): ScanEntry | undefined {
     return this.scans.get(id);
+  }
+
+  /** The most recent finished scan of exactly this set of folders, if one is still held. */
+  latestDoneFor(roots: string[]): ScanEntry | undefined {
+    const key = rootsKey(roots);
+    return [...this.scans.values()]
+      .filter((s) => s.state === 'done' && s.result && rootsKey(s.roots) === key)
+      .sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0))[0];
   }
 
   /** Cancel a running scan. Its partial findings are discarded. */

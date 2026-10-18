@@ -3,7 +3,8 @@ import path from 'node:path';
 import { hashFile, hashHead, HashAbortedError } from '../hash';
 import { pathKey } from '../planner';
 import { shouldIgnoreFile } from '../watcher';
-import { isProtectedPath, SKIPPED_SYSTEM_DIR_NAMES, QUARANTINE_DIR_NAME } from '../paths';
+import { SKIPPED_SYSTEM_DIR_NAMES, QUARANTINE_DIR_NAME } from '../paths';
+import { walkFiles, errMessage } from '../walk';
 
 /** Files at or below this size are hashed once, in full; larger ones get a cheap head hash first. */
 export const HEAD_BYTES = 64 * 1024;
@@ -98,13 +99,6 @@ export interface ScanOptions {
   hashConcurrency?: number;
 }
 
-const yieldToEventLoop = () => new Promise<void>((resolve) => setImmediate(resolve));
-
-function errMessage(err: unknown): string {
-  const e = err as NodeJS.ErrnoException;
-  return e?.code ? `${e.code}: ${e.message}` : String((err as Error)?.message ?? err);
-}
-
 /** Run `fn` over `items` with at most `limit` in flight, stopping early on abort. */
 async function runPool<T>(
   items: T[],
@@ -173,89 +167,38 @@ export async function scanDuplicates(options: ScanOptions): Promise<ScanResult> 
 
   // ---- 1. walk ---------------------------------------------------------
   const bySize = new Map<number, DupFile[]>();
-  const seen = new Set<string>();
 
-  const walk = async (root: string) => {
-    const stack: string[] = [root];
-    let counter = 0;
+  for await (const entry of walkFiles({
+    roots: options.roots,
+    includeHidden: !!options.includeHidden,
+    skipDirNames: SKIPPED_DIR_NAMES,
+    skipFile: (_name, full) => shouldIgnoreFile(full),
+    isIgnored: options.isIgnored,
+    signal,
+    onError: fail,
+  })) {
+    const { stats: st } = entry;
+    const size = Number(st.size);
+    if (size < minSize) continue;
 
-    while (stack.length && !cancelled()) {
-      const dir = stack.pop()!;
-      let handle: fs.Dir;
-      try {
-        handle = await fs.promises.opendir(dir);
-      } catch (err) {
-        fail(dir, err);
-        continue;
-      }
+    progress.filesSeen++;
+    progress.bytesSeen += size;
+    stats.filesScanned++;
+    stats.bytesScanned += size;
+    progress.currentPath = entry.path;
+    emit();
 
-      try {
-        for await (const entry of handle) {
-          if (cancelled()) break;
-          if (++counter % 200 === 0) await yieldToEventLoop();
-
-          const full = path.join(dir, entry.name);
-          if (!options.includeHidden && entry.name.startsWith('.')) continue;
-
-          // Classify with lstat rather than the Dirent type: lstat never follows a link, and
-          // it reports Windows junctions as links, which the directory-entry type from
-          // opendir does not reliably do (a junction was followed out of the scanned folder
-          // on Windows CI). Links are never followed; their targets are not part of the scan.
-          let st: fs.BigIntStats;
-          try {
-            st = await fs.promises.lstat(full, { bigint: true });
-          } catch (err) {
-            fail(full, err);
-            continue;
-          }
-          if (st.isSymbolicLink()) continue;
-
-          if (st.isDirectory()) {
-            if (SKIPPED_DIR_NAMES.has(entry.name)) continue;
-            if (isProtectedPath(full)) continue;
-            if (options.isIgnored?.(full, root)) continue;
-            stack.push(full);
-          } else if (st.isFile()) {
-            if (shouldIgnoreFile(full)) continue;
-            if (options.isIgnored?.(full, root)) continue;
-            const key = pathKey(full);
-            if (seen.has(key)) continue; // overlapping roots
-            seen.add(key);
-
-            const size = Number(st.size);
-            if (size < minSize) continue;
-
-            progress.filesSeen++;
-            progress.bytesSeen += size;
-            stats.filesScanned++;
-            stats.bytesScanned += size;
-            progress.currentPath = full;
-            emit();
-
-            const dup: DupFile = {
-              path: full,
-              name: entry.name,
-              size,
-              mtimeMs: Number(st.mtimeMs),
-              linkKey: st.ino !== 0n ? `${st.dev}:${st.ino}` : `path:${key}`,
-              hashSource: 'computed',
-            };
-            const bucket = bySize.get(size);
-            if (bucket) bucket.push(dup);
-            else bySize.set(size, [dup]);
-          }
-        }
-      } catch (err) {
-        fail(dir, err);
-      } finally {
-        await handle.close().catch(() => undefined);
-      }
-    }
-  };
-
-  for (const root of options.roots) {
-    if (cancelled()) break;
-    await walk(root);
+    const dup: DupFile = {
+      path: entry.path,
+      name: entry.name,
+      size,
+      mtimeMs: Number(st.mtimeMs),
+      linkKey: st.ino !== 0n ? `${st.dev}:${st.ino}` : `path:${pathKey(entry.path)}`,
+      hashSource: 'computed',
+    };
+    const bucket = bySize.get(size);
+    if (bucket) bucket.push(dup);
+    else bySize.set(size, [dup]);
   }
   if (cancelled()) return { groups: [], stats, cancelled: true };
 

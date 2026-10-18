@@ -16,6 +16,7 @@ Built with Electron, React, TypeScript and SQLite. It runs on Windows, macOS and
 - **Preview before you apply.** Run a dry run to see exactly what would move and where, then apply it. Apply runs the plan you reviewed, and each step is re-checked against the disk first.
 - **History and undo.** Every operation is recorded. Undo a whole batch or a single step.
 - **Duplicate finder.** Scan any folders for files with identical contents (a full SHA-256 comparison, never names or sizes alone), review the groups, choose what to keep, and move the extra copies to a quarantine folder (undoable) or the system trash. Nothing is selected for you until you ask.
+- **Storage analysis.** Pick folders and see where the space goes: by folder (click to drill down), by file type, by how long since files changed, plus the largest folders and files. Filter and sort every file, and review cleanup suggestions (old installers, large old videos and archives, old files in Downloads, archives beside an extracted folder, and more). Each suggestion says exactly why a file is listed. Nothing is removed unless you tick files and confirm.
 - **Unsorted inbox.** Files that match no rule are left alone. You can review them later, with no popups.
 - **Local only.** There is no telemetry, no account and no cloud. Your data lives in a local SQLite database.
 
@@ -63,6 +64,15 @@ A file tool that loses files is worse than no tool, so these rules are built in 
 11. **Database upgrades keep a backup.** Before an existing database is migrated, a copy is saved next to it as `fileflow.db.bak-v<version>`.
 
 Moving a file to the Trash cannot be undone from inside FileFlow; restore it from the system Recycle Bin or Trash.
+
+### Storage analysis safety and privacy
+
+- Only file names, sizes and dates are read; **file contents are never opened**.
+- A report stores that metadata (full paths, sizes, dates) in the local database so it can be browsed without re-scanning. It never leaves your computer. Use **Delete this report** to remove it; FileFlow keeps at most 10 reports and one per set of folders.
+- A re-scan replaces the old report only when it finishes. Cancelling or quitting mid-scan leaves the previous report intact.
+- Folder totals count shared (hard-linked) data once. System folders are never scanned, and scanning a whole drive, your home folder or application-data folders asks for confirmation.
+- "Old" means *not modified*, never "unused": last-access times are unreliable on most systems, so FileFlow does not use them to decide anything. Savings across suggestions are counted per distinct file, and duplicate savings are shown separately.
+- Removal moves files to the quarantine folder (undoable from **History**) or the system trash. The app only acts on files recorded in the scan, and re-checks each (regular file, not a link, same size and modified time, not in a protected folder) right before touching it.
 
 ### Duplicate finder safety
 

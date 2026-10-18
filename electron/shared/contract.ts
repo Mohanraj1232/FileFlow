@@ -337,3 +337,132 @@ export interface ResolveDuplicatesResult {
   reclaimed_bytes: number;
   skipped: { path: string; reason: string }[];
 }
+
+// ---------------------------------------------------------------------------
+// Storage analysis
+// ---------------------------------------------------------------------------
+
+export type StorageScanState = 'running' | 'done' | 'cancelled' | 'failed';
+
+export interface StorageScanSummary {
+  scan_id: number;
+  roots: string[];
+  state: StorageScanState;
+  started_at: string | null;
+  finished_at: string | null;
+  file_count: number;
+  dir_count: number;
+  /** Disk space used: shared (hard-linked) data is counted once. */
+  stored_bytes: number;
+  /** Sum of every file's own size (hard links counted each time). */
+  logical_bytes: number;
+  /** Folders or files that could not be read. */
+  error_count: number;
+  progress: { phase: 'walking' | 'done'; files_seen: number; bytes_seen: number; current_path: string | null } | null;
+  error: string | null;
+}
+
+export interface StorageTally {
+  files: number;
+  bytes: number;
+}
+
+export interface StorageFolderEntry extends StorageTally {
+  path: string;
+  name: string;
+}
+
+export interface StorageKindTally extends StorageTally {
+  kind: FileKind;
+  top_extensions: (StorageTally & { ext: string })[];
+}
+
+export interface StorageAgeBucket extends StorageTally {
+  label: string;
+}
+
+export interface StorageFile {
+  id: number;
+  path: string;
+  name: string;
+  dir: string;
+  ext: string;
+  kind: FileKind;
+  size: number;
+  /** What the file adds to disk usage (0 for a second hard link to the same data). */
+  stored_size: number;
+  links: number;
+  modified_at: string;
+  /** Last access. Unreliable (many systems do not update it); shown for information only. */
+  accessed_at: string | null;
+}
+
+export interface StorageReport {
+  scan: StorageScanSummary;
+  /** The folder being viewed, or null for the top level (the chosen folders). */
+  folder: string | null;
+  /** Immediate subfolders of `folder`, each including everything beneath it, biggest first. */
+  children: StorageFolderEntry[];
+  /** Files sitting directly in `folder`. */
+  direct_files: StorageTally;
+  by_kind: StorageKindTally[];
+  largest_folders: StorageFolderEntry[];
+  largest_files: StorageFile[];
+  /** Space by last-modified age. Age is not use: an old file may still be needed. */
+  age: StorageAgeBucket[];
+  errors: { path: string; error: string }[];
+}
+
+export interface StorageFileFilter {
+  folder?: string | null;
+  kinds?: FileKind[];
+  ext?: string;
+  min_size?: number;
+  max_size?: number;
+  /** ISO date. */
+  modified_before?: string;
+  modified_after?: string;
+  name_contains?: string;
+}
+
+export type StorageSort = 'size_desc' | 'size_asc' | 'mtime_asc' | 'mtime_desc' | 'name' | 'path';
+
+export interface StorageFilesPage {
+  files: StorageFile[];
+  total_count: number;
+  /** Disk usage of every matching file, not only this page. */
+  total_bytes: number;
+  offset: number;
+}
+
+export interface StorageRecommendation {
+  id: string;
+  title: string;
+  description: string;
+  /** Exactly why these files are listed. */
+  basis: string;
+  file_count: number;
+  bytes: number;
+}
+
+export interface StorageRecommendations {
+  recommendations: StorageRecommendation[];
+  /** Distinct files across all recommendations: a file in several is counted once. */
+  total_files: number;
+  total_bytes: number;
+  old_months: number;
+}
+
+/** Savings from a duplicate scan of exactly the same folders. Kept apart from the recommendations. */
+export interface DuplicateSavings {
+  reclaimable_bytes: number;
+  group_count: number;
+  scanned_at: string | null;
+}
+
+export interface StorageCleanupResult {
+  operation: Operation | null;
+  removed_count: number;
+  reclaimed_bytes: number;
+  skipped: { path: string; reason: string }[];
+}

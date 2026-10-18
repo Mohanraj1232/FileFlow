@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 interface StatCardProps {
   icon: ReactNode;
   label: string;
-  value: number;
+  value: number | string;
   tone: "accent" | "success" | "warning" | "danger";
 }
 
@@ -23,7 +23,11 @@ export default function StatCard({ icon, label, value, tone }: StatCardProps) {
         {icon}
       </div>
       <div className="min-w-0">
-        <p className="text-3xl font-bold leading-tight text-fg">{value}</p>
+        <p
+          className={`${typeof value === "string" ? "text-2xl" : "text-3xl"} whitespace-nowrap font-bold leading-tight text-fg`}
+        >
+          {value}
+        </p>
         <p className="text-xs text-fg-muted">{label}</p>
       </div>
     </div>

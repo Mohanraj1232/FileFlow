@@ -105,6 +105,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('duplicate-progress', listener);
   },
 
+  // Storage analysis
+  storageListScans: () => ipcRenderer.invoke('storage_list_scans'),
+  storageStartScan: (roots: string[], options?: unknown) => ipcRenderer.invoke('storage_start_scan', roots, options),
+  storageGetScan: (scanId: number) => ipcRenderer.invoke('storage_get_scan', scanId),
+  storageCancelScan: (scanId: number) => ipcRenderer.invoke('storage_cancel_scan', scanId),
+  storageDeleteScan: (scanId: number) => ipcRenderer.invoke('storage_delete_scan', scanId),
+  storageGetReport: (scanId: number, folder?: string | null) => ipcRenderer.invoke('storage_get_report', scanId, folder),
+  storageQueryFiles: (scanId: number, filter: unknown, sort: string, offset: number, limit: number) =>
+    ipcRenderer.invoke('storage_query_files', scanId, filter, sort, offset, limit),
+  storageGetRecommendations: (scanId: number, oldMonths?: number) =>
+    ipcRenderer.invoke('storage_get_recommendations', scanId, oldMonths),
+  storageGetRecommendationFiles: (scanId: number, id: string, oldMonths: number, offset: number, limit: number) =>
+    ipcRenderer.invoke('storage_get_recommendation_files', scanId, id, oldMonths, offset, limit),
+  storageGetDuplicateSavings: (scanId: number) => ipcRenderer.invoke('storage_get_duplicate_savings', scanId),
+  storageCleanup: (scanId: number, paths: string[], mode: string) =>
+    ipcRenderer.invoke('storage_cleanup', scanId, paths, mode),
+  storageReveal: (scanId: number, filePath: string) => ipcRenderer.invoke('storage_reveal', scanId, filePath),
+  onStorageProgress: (callback: (data: any) => void) => {
+    const listener = (_event: unknown, data: unknown) => callback(data);
+    ipcRenderer.on('storage-progress', listener);
+    return () => ipcRenderer.removeListener('storage-progress', listener);
+  },
+
   // Event listeners for renderer
   onFileProcessed: (callback: (data: any) => void) => {
     const listener = (_event: unknown, data: unknown) => callback(data);

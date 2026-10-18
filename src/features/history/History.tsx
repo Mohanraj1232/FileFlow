@@ -199,6 +199,9 @@ export default function History() {
                           {op.source.startsWith("duplicates:") && (
                             <Badge tone="accent" size="sm">Duplicates</Badge>
                           )}
+                          {op.source.startsWith("cleanup:") && (
+                            <Badge tone="accent" size="sm">Storage cleanup</Badge>
+                          )}
                           {op.source === "watcher" && (
                             <Badge tone="neutral" size="sm">Automatic</Badge>
                           )}
